@@ -10,7 +10,6 @@ ConsulChangeLogger.Proxy
   |-- login/authentication
   |-- Consul request forwarding
   |-- KV read cache
-  |-- Serilog audit.log JSON Lines
   |-- durable outbox
   |
   +--> Consul HTTP API
@@ -33,12 +32,11 @@ This matches the Consul UI workflow where users read a KV value before changing 
 
 For each KV write/delete event:
 
-1. append JSON to `AUDIT_LOG_PATH`
-2. write the same JSON to `AUDIT_OUTBOX_PATH`
-3. enqueue the outbox file for Elasticsearch delivery
-4. delete the outbox file only after Elasticsearch accepts it
+1. write JSON to `AUDIT_OUTBOX_PATH`
+2. enqueue the outbox file for Elasticsearch delivery
+3. delete the outbox file only after Elasticsearch accepts it
 
-The local audit log is written through a dedicated Serilog file sink. If Elasticsearch is unavailable, the background worker retries from the outbox. For production, mount `AUDIT_OUTBOX_PATH` on persistent storage.
+If Elasticsearch is unavailable, the background worker retries from the outbox. For production, mount `AUDIT_OUTBOX_PATH` on persistent storage.
 
 ## Configuration
 

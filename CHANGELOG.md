@@ -9,6 +9,6 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Initial Consul KV change logging proxy.
 - LDAP/mock login gate in front of Consul UI/API.
 - Raw old/new KV value capture for UI read-before-write flows.
-- Local JSON Lines audit log plus durable outbox for Elasticsearch delivery.
+- Durable outbox for local change-record persistence and Elasticsearch delivery.
 - Consul KV based non-secret runtime configuration.
 - Docker Compose and Kubernetes examples.

@@ -16,7 +16,6 @@ internal static class ConsulConfigLoader
         "CONSUL_UPSTREAM_URL",
         "ELASTICSEARCH_URL",
         "AUDIT_INDEX",
-        "AUDIT_LOG_PATH",
         "AUDIT_OUTBOX_PATH",
         "DATA_PROTECTION_PATH",
         "READ_MATCH_WINDOW_SECONDS",

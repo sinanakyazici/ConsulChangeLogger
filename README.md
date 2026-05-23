@@ -1,13 +1,12 @@
 # ConsulChangeLogger
 
-ConsulChangeLogger records Consul KV changes with user identity, timestamp, key, old value, and new value. It is designed to sit in front of Consul UI/API traffic and forward requests to Consul while writing change records to a local JSON Lines log and Elasticsearch.
+ConsulChangeLogger records Consul KV changes with user identity, timestamp, key, old value, and new value. It is designed to sit in front of Consul UI/API traffic and forward requests to Consul while writing change records to a durable outbox and Elasticsearch.
 
 It does not produce generic access logs and it does not enforce authorization rules. It logs KV changes.
 
 ```text
 Browser -> ConsulChangeLogger -> Consul UI/API
               |
-              +-> audit.log
               +-> durable outbox
               +-> Elasticsearch -> Kibana
 ```
@@ -19,15 +18,14 @@ Browser -> ConsulChangeLogger -> Consul UI/API
 - `user_email`, `client_ip`, `user_agent`, `request_id`, and `event_id` fields.
 - Best-effort `old_value` capture from prior UI reads.
 - Raw `new_value` capture from write requests.
-- Local JSON Lines audit log.
-- Audit log writing through Serilog.
+- Durable local outbox as the only local change-record store.
 - Durable local outbox with Elasticsearch retry.
 - Non-secret runtime configuration from Consul KV.
 - Docker and Kubernetes examples.
 
 ## What It Logs
 
-ConsulChangeLogger emits records for Consul KV write/delete operations only. Audit records are written through a dedicated Serilog file sink as JSON Lines.
+ConsulChangeLogger emits records for Consul KV write/delete operations only. Change records are written directly to the durable outbox as JSON files, then delivered to Elasticsearch by the background worker.
 
 Example:
 
@@ -87,7 +85,6 @@ Seed non-secret runtime config into Consul KV:
 docker exec consul consul kv put consul-change-logger/config/LISTEN_PORT 8080
 docker exec consul consul kv put consul-change-logger/config/ELASTICSEARCH_URL http://elasticsearch:9200
 docker exec consul consul kv put consul-change-logger/config/AUDIT_INDEX consul-change-logger
-docker exec consul consul kv put consul-change-logger/config/AUDIT_LOG_PATH /var/log/audit/audit.log
 docker exec consul consul kv put consul-change-logger/config/AUDIT_OUTBOX_PATH /var/log/audit/outbox
 docker exec consul consul kv put consul-change-logger/config/DATA_PROTECTION_PATH /var/lib/consul-change-logger/dp-keys
 docker exec consul consul kv put consul-change-logger/config/READ_MATCH_WINDOW_SECONDS 1800
@@ -136,10 +133,10 @@ Inspect Elasticsearch:
 curl.exe "http://localhost:9200/consul-change-logger/_search?pretty&size=10&sort=@timestamp:desc"
 ```
 
-Inspect local JSON Lines:
+Inspect pending local outbox files if Elasticsearch is unavailable:
 
 ```powershell
-Get-Content .\logs\audit.log -Tail 10
+Get-ChildItem .\logs\outbox
 ```
 
 ## Configuration
@@ -158,7 +155,6 @@ Runtime configuration is read from Consul KV under `CONSUL_CONFIG_PREFIX`:
 | `LISTEN_PORT` | `8080` | HTTP port exposed by ConsulChangeLogger. |
 | `ELASTICSEARCH_URL` | `http://elasticsearch:9200` | Elasticsearch endpoint. |
 | `AUDIT_INDEX` | `consul-change-logger` | Elasticsearch index name. |
-| `AUDIT_LOG_PATH` | `/var/log/audit/audit.log` | Local JSON Lines audit log path. |
 | `AUDIT_OUTBOX_PATH` | `/var/log/audit/outbox` | Durable outbox directory. |
 | `DATA_PROTECTION_PATH` | `/var/lib/consul-change-logger/dp-keys` | ASP.NET cookie key storage path. |
 | `READ_MATCH_WINDOW_SECONDS` | `1800` | Time window for matching prior reads to writes. |

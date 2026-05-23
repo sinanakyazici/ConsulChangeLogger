@@ -17,18 +17,15 @@ internal sealed class AuditSink
     private readonly IHttpClientFactory httpClientFactory;
     private readonly AuditOptions options;
     private readonly AuditQueue auditQueue;
-    private readonly AuditEventLogger auditEventLogger;
 
     public AuditSink(
         IHttpClientFactory httpClientFactory,
         AuditOptions options,
-        AuditQueue auditQueue,
-        AuditEventLogger auditEventLogger)
+        AuditQueue auditQueue)
     {
         this.httpClientFactory = httpClientFactory;
         this.options = options;
         this.auditQueue = auditQueue;
-        this.auditEventLogger = auditEventLogger;
     }
 
     public async Task WaitForElasticsearchAsync(CancellationToken cancellationToken)
@@ -98,7 +95,6 @@ internal sealed class AuditSink
         var outboxPath = BuildOutboxPath(auditEvent.EventId);
 
         Directory.CreateDirectory(options.AuditOutboxPath);
-        auditEventLogger.Write(eventJson);
         await File.WriteAllTextAsync(outboxPath, eventJson, Encoding.UTF8, cancellationToken);
         await auditQueue.EnqueueAsync(outboxPath, cancellationToken);
     }

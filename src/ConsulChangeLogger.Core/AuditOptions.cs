@@ -5,7 +5,6 @@ public sealed record AuditOptions
     public string ConsulUpstreamUrl { get; init; } = "http://consul:8500";
     public string ElasticsearchUrl { get; init; } = "http://elasticsearch:9200";
     public string AuditIndex { get; init; } = "consul-change-logger";
-    public string AuditLogPath { get; init; } = "/var/log/audit/audit.log";
     public string AuditOutboxPath { get; init; } = "/var/log/audit/outbox";
     public string DataProtectionPath { get; init; } = "/var/lib/consul-change-logger/dp-keys";
     public int ReadMatchWindowSeconds { get; init; } = 1800;
@@ -19,7 +18,6 @@ public sealed record AuditOptions
         ConsulUpstreamUrl = ReadString(config, "CONSUL_UPSTREAM_URL", "http://consul:8500").TrimEnd('/'),
         ElasticsearchUrl = ReadString(config, "ELASTICSEARCH_URL", "http://elasticsearch:9200").TrimEnd('/'),
         AuditIndex = ReadString(config, "AUDIT_INDEX", "consul-change-logger"),
-        AuditLogPath = ReadString(config, "AUDIT_LOG_PATH", "/var/log/audit/audit.log"),
         AuditOutboxPath = ReadString(config, "AUDIT_OUTBOX_PATH", "/var/log/audit/outbox"),
         DataProtectionPath = ReadString(config, "DATA_PROTECTION_PATH", "/var/lib/consul-change-logger/dp-keys"),
         ReadMatchWindowSeconds = ReadPositiveInt(config, "READ_MATCH_WINDOW_SECONDS", 1800),
