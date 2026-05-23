@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using ConsulChangeLogger.Core;
+using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Audit;
 
@@ -16,12 +17,18 @@ internal sealed class AuditSink
     private readonly IHttpClientFactory httpClientFactory;
     private readonly AuditOptions options;
     private readonly AuditQueue auditQueue;
+    private readonly AuditEventLogger auditEventLogger;
 
-    public AuditSink(IHttpClientFactory httpClientFactory, AuditOptions options, AuditQueue auditQueue)
+    public AuditSink(
+        IHttpClientFactory httpClientFactory,
+        AuditOptions options,
+        AuditQueue auditQueue,
+        AuditEventLogger auditEventLogger)
     {
         this.httpClientFactory = httpClientFactory;
         this.options = options;
         this.auditQueue = auditQueue;
+        this.auditEventLogger = auditEventLogger;
     }
 
     public async Task WaitForElasticsearchAsync(CancellationToken cancellationToken)
@@ -43,7 +50,7 @@ internal sealed class AuditSink
             {
             }
 
-            Console.WriteLine("waiting for elasticsearch...");
+            Log.Information("Waiting for Elasticsearch");
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
     }
@@ -90,12 +97,10 @@ internal sealed class AuditSink
         var eventJson = JsonSerializer.Serialize(auditEvent, JsonOptions);
         var outboxPath = BuildOutboxPath(auditEvent.EventId);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(options.AuditLogPath)!);
         Directory.CreateDirectory(options.AuditOutboxPath);
-        await File.AppendAllTextAsync(options.AuditLogPath, eventJson + Environment.NewLine, Encoding.UTF8, cancellationToken);
+        auditEventLogger.Write(eventJson);
         await File.WriteAllTextAsync(outboxPath, eventJson, Encoding.UTF8, cancellationToken);
         await auditQueue.EnqueueAsync(outboxPath, cancellationToken);
-        Console.WriteLine(eventJson);
     }
 
     private string BuildOutboxPath(string requestId)

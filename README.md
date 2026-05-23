@@ -20,13 +20,14 @@ Browser -> ConsulChangeLogger -> Consul UI/API
 - Best-effort `old_value` capture from prior UI reads.
 - Raw `new_value` capture from write requests.
 - Local JSON Lines audit log.
+- Audit log writing through Serilog.
 - Durable local outbox with Elasticsearch retry.
 - Non-secret runtime configuration from Consul KV.
 - Docker and Kubernetes examples.
 
 ## What It Logs
 
-ConsulChangeLogger emits records for Consul KV write/delete operations only.
+ConsulChangeLogger emits records for Consul KV write/delete operations only. Audit records are written through a dedicated Serilog file sink as JSON Lines.
 
 Example:
 

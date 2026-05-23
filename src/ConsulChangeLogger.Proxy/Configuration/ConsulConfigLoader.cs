@@ -1,4 +1,5 @@
 using System.Net;
+using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Configuration;
 
@@ -57,11 +58,11 @@ internal static class ConsulConfigLoader
             }
             catch (HttpRequestException error)
             {
-                Console.WriteLine($"failed to read config key {key} from consul: {error.Message}");
+                Log.Warning(error, "Failed to read config key {ConfigKey} from Consul", key);
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine($"failed to read config key {key} from consul: timeout");
+                Log.Warning("Failed to read config key {ConfigKey} from Consul: timeout", key);
             }
         }
 
@@ -83,15 +84,15 @@ internal static class ConsulConfigLoader
                     continue;
                 }
 
-                Console.WriteLine($"warning: secret-like config key {key} exists in Consul KV and will be ignored; move it to a Kubernetes Secret/env var");
+                Log.Warning("Secret-like config key {ConfigKey} exists in Consul KV and will be ignored; move it to a Kubernetes Secret/env var", key);
             }
             catch (HttpRequestException error)
             {
-                Console.WriteLine($"failed to check forbidden config key {key} in consul: {error.Message}");
+                Log.Warning(error, "Failed to check forbidden config key {ConfigKey} in Consul", key);
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine($"failed to check forbidden config key {key} in consul: timeout");
+                Log.Warning("Failed to check forbidden config key {ConfigKey} in Consul: timeout", key);
             }
         }
     }

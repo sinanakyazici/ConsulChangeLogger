@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using ConsulChangeLogger.Core;
+using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Audit;
 
@@ -70,11 +71,11 @@ internal sealed class AuditDispatchWorker : BackgroundService
             }
             catch (HttpRequestException error)
             {
-                Console.WriteLine($"failed to send audit event to elasticsearch: {error.Message}");
+                Log.Error(error, "Failed to send audit event to Elasticsearch");
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine("failed to send audit event to elasticsearch: timeout");
+                Log.Warning("Failed to send audit event to Elasticsearch: timeout");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(options.ElasticsearchRetryDelaySeconds), cancellationToken);

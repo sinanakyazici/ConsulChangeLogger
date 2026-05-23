@@ -52,6 +52,7 @@ internal static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(10);
         });
         services.AddSingleton<AuditQueue>();
+        services.AddSingleton<AuditEventLogger>();
         services.AddSingleton<AuditSink>();
         services.AddHostedService<AuditDispatchWorker>();
 

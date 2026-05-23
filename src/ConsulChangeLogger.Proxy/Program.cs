@@ -5,6 +5,15 @@ using ConsulChangeLogger.Proxy.Configuration;
 using ConsulChangeLogger.Proxy.DependencyInjection;
 using ConsulChangeLogger.Proxy.Health;
 using ConsulChangeLogger.Proxy.Proxying;
+using Serilog;
+using Serilog.Events;
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .WriteTo.Console()
+    .CreateBootstrapLogger();
 
 var bootstrapOptions = BootstrapOptions.FromEnvironment();
 var consulConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, CancellationToken.None);
@@ -13,7 +22,15 @@ var authOptions = AuthOptions.FromConfiguration(consulConfig);
 var listenPort = ConfigValue.ReadString(consulConfig, "LISTEN_PORT", Environment.GetEnvironmentVariable("LISTEN_PORT") ?? "8080");
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.SetMinimumLevel(LogLevel.Warning);
+builder.Host.UseSerilog((_, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .MinimumLevel.Information()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("System", LogEventLevel.Warning)
+        .WriteTo.Console();
+});
+
 builder.WebHost.UseUrls($"http://0.0.0.0:{listenPort}");
 builder.Services.AddConsulChangeLoggerServices(options, authOptions);
 
@@ -32,5 +49,15 @@ app.MapHealthEndpoints();
 app.MapAuthenticationEndpoints();
 app.MapConsulProxyEndpoint(options);
 
-Console.WriteLine($"ConsulChangeLogger listening on :{listenPort}, upstream={options.ConsulUpstreamUrl}, configPrefix={bootstrapOptions.ConfigPrefix}");
-await app.RunAsync();
+try
+{
+    Log.Information("ConsulChangeLogger listening on port {ListenPort}, upstream {ConsulUpstreamUrl}, config prefix {ConfigPrefix}",
+        listenPort,
+        options.ConsulUpstreamUrl,
+        bootstrapOptions.ConfigPrefix);
+    await app.RunAsync();
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
