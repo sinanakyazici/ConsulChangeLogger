@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/__pycache__/
+logs/
+data-protection/
+dotnet/
+.git/
+.github/

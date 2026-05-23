@@ -1,0 +1,19 @@
+services:
+  consul-change-logger:
+    build:
+      context: .
+      dockerfile: src/ConsulChangeLogger.Proxy/Dockerfile
+    environment:
+      CONSUL_UPSTREAM_URL: http://consul:8500
+      CONSUL_CONFIG_PREFIX: consul-change-logger/config
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/var/log/audit
+      - ./data-protection:/var/lib/consul-change-logger/dp-keys
+    networks:
+      - consul-audit-net
+
+networks:
+  consul-audit-net:
+    external: true

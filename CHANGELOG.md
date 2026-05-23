@@ -1,0 +1,14 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on Keep a Changelog, and this project follows Semantic Versioning once public releases start.
+
+## Unreleased
+
+- Initial Consul KV change logging proxy.
+- LDAP/mock login gate in front of Consul UI/API.
+- Raw old/new KV value capture for UI read-before-write flows.
+- Local JSON Lines audit log plus durable outbox for Elasticsearch delivery.
+- Consul KV based non-secret runtime configuration.
+- Docker Compose and Kubernetes examples.

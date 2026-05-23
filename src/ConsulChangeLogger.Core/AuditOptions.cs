@@ -1,0 +1,55 @@
+namespace ConsulChangeLogger.Core;
+
+public sealed record AuditOptions
+{
+    public string ConsulUpstreamUrl { get; init; } = "http://consul:8500";
+    public string ElasticsearchUrl { get; init; } = "http://elasticsearch:9200";
+    public string AuditIndex { get; init; } = "consul-change-logger";
+    public string AuditLogPath { get; init; } = "/var/log/audit/audit.log";
+    public string AuditOutboxPath { get; init; } = "/var/log/audit/outbox";
+    public string DataProtectionPath { get; init; } = "/var/lib/consul-change-logger/dp-keys";
+    public int ReadMatchWindowSeconds { get; init; } = 1800;
+    public int MaxBodyBytes { get; init; } = 8192;
+    public int AuditQueueCapacity { get; init; } = 1000;
+    public int ElasticsearchRetryDelaySeconds { get; init; } = 2;
+    public bool AuthCookieSecure { get; init; }
+
+    public static AuditOptions FromConfiguration(IReadOnlyDictionary<string, string> config) => new()
+    {
+        ConsulUpstreamUrl = ReadString(config, "CONSUL_UPSTREAM_URL", "http://consul:8500").TrimEnd('/'),
+        ElasticsearchUrl = ReadString(config, "ELASTICSEARCH_URL", "http://elasticsearch:9200").TrimEnd('/'),
+        AuditIndex = ReadString(config, "AUDIT_INDEX", "consul-change-logger"),
+        AuditLogPath = ReadString(config, "AUDIT_LOG_PATH", "/var/log/audit/audit.log"),
+        AuditOutboxPath = ReadString(config, "AUDIT_OUTBOX_PATH", "/var/log/audit/outbox"),
+        DataProtectionPath = ReadString(config, "DATA_PROTECTION_PATH", "/var/lib/consul-change-logger/dp-keys"),
+        ReadMatchWindowSeconds = ReadPositiveInt(config, "READ_MATCH_WINDOW_SECONDS", 1800),
+        MaxBodyBytes = ReadPositiveInt(config, "MAX_BODY_BYTES", 8192),
+        AuditQueueCapacity = ReadPositiveInt(config, "AUDIT_QUEUE_CAPACITY", 1000),
+        ElasticsearchRetryDelaySeconds = ReadPositiveInt(config, "ELASTICSEARCH_RETRY_DELAY_SECONDS", 2),
+        AuthCookieSecure = ReadBool(config, "AUTH_COOKIE_SECURE", false)
+    };
+
+    private static string ReadString(IReadOnlyDictionary<string, string> config, string name, string fallback) =>
+        config.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))
+            ? fallback
+            : Environment.GetEnvironmentVariable(name)!;
+
+    private static int ReadInt(IReadOnlyDictionary<string, string> config, string name, int fallback) =>
+        config.TryGetValue(name, out var rawValue) && int.TryParse(rawValue, out var configValue)
+            ? configValue
+            : int.TryParse(Environment.GetEnvironmentVariable(name), out var envValue)
+                ? envValue
+                : fallback;
+
+    private static int ReadPositiveInt(IReadOnlyDictionary<string, string> config, string name, int fallback) =>
+        Math.Max(1, ReadInt(config, name, fallback));
+
+    private static bool ReadBool(IReadOnlyDictionary<string, string> config, string name, bool fallback) =>
+        config.TryGetValue(name, out var rawValue) && bool.TryParse(rawValue, out var configValue)
+            ? configValue
+            : bool.TryParse(Environment.GetEnvironmentVariable(name), out var envValue)
+                ? envValue
+                : fallback;
+}

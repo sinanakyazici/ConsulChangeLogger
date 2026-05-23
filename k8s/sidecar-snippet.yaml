@@ -1,0 +1,46 @@
+# Add this container and volumeMount to the existing Consul UI pod template.
+# Route the Consul UI Service/Ingress to port 8080 so all UI/API traffic passes through this sidecar.
+containers:
+  - name: consul-change-logger
+    image: your-registry/consul-change-logger:latest
+    imagePullPolicy: IfNotPresent
+    env:
+      - name: CONSUL_UPSTREAM_URL
+        value: http://127.0.0.1:8500
+      - name: CONSUL_CONFIG_PREFIX
+        value: consul-change-logger/config
+    ports:
+      - name: audit-http
+        containerPort: 8080
+    volumeMounts:
+      - name: audit-log
+        mountPath: /var/log/audit
+      - name: audit-dp-keys
+        mountPath: /var/lib/consul-change-logger/dp-keys
+    readinessProbe:
+      httpGet:
+        path: /health/ready
+        port: audit-http
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 3
+    livenessProbe:
+      httpGet:
+        path: /health/live
+        port: audit-http
+      initialDelaySeconds: 10
+      periodSeconds: 30
+      timeoutSeconds: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+volumes:
+  - name: audit-log
+    emptyDir: {}
+  - name: audit-dp-keys
+    emptyDir: {}
