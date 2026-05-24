@@ -3,6 +3,8 @@ using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using System.Net.Http.Headers;
+using System.Text;
 
 namespace ConsulChangeLogger.Proxy.DependencyInjection;
 
@@ -50,11 +52,27 @@ internal static class ServiceCollectionExtensions
         {
             client.BaseAddress = new Uri(options.ElasticsearchUrl);
             client.Timeout = TimeSpan.FromSeconds(10);
+            ConfigureElasticsearchAuthentication(client, options);
         });
         services.AddSingleton<ChangeRecordQueue>();
         services.AddSingleton<ChangeRecordSink>();
         services.AddHostedService<ChangeRecordDispatchWorker>();
 
         return services;
+    }
+
+    private static void ConfigureElasticsearchAuthentication(HttpClient client, ChangeLoggerOptions options)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ElasticsearchApiKey))
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", options.ElasticsearchApiKey);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.ElasticsearchUsername))
+        {
+            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{options.ElasticsearchUsername}:{options.ElasticsearchPassword}"));
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+        }
     }
 }

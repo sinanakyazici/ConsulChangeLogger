@@ -5,6 +5,7 @@ using ConsulChangeLogger.Proxy.Configuration;
 using ConsulChangeLogger.Proxy.DependencyInjection;
 using ConsulChangeLogger.Proxy.Health;
 using ConsulChangeLogger.Proxy.Proxying;
+using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 using Serilog.Events;
 
@@ -35,6 +36,7 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{listenPort}");
 builder.Services.AddConsulChangeLoggerServices(options, authOptions);
 
 var app = builder.Build();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 

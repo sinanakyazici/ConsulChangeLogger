@@ -1,14 +1,51 @@
 # Add this container and volumeMount to the existing Consul UI pod template.
 # Route the Consul UI Service/Ingress to port 8080 so all UI/API traffic passes through this sidecar.
+securityContext:
+  fsGroup: 1654
+  fsGroupChangePolicy: OnRootMismatch
+
 containers:
   - name: consul-change-logger
     image: your-registry/consul-change-logger:latest
     imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1654
+      runAsGroup: 1654
+      capabilities:
+        drop:
+          - ALL
     env:
       - name: CONSUL_UPSTREAM_URL
         value: http://127.0.0.1:8500
       - name: CONSUL_CONFIG_PREFIX
         value: consul-change-logger/config
+      - name: LDAP_BIND_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: consul-change-logger-secrets
+            key: ldap-bind-password
+            optional: true
+      - name: ELASTICSEARCH_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: consul-change-logger-secrets
+            key: elasticsearch-username
+            optional: true
+      - name: ELASTICSEARCH_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: consul-change-logger-secrets
+            key: elasticsearch-password
+            optional: true
+      - name: ELASTICSEARCH_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: consul-change-logger-secrets
+            key: elasticsearch-api-key
+            optional: true
     ports:
       - name: logger-http
         containerPort: 8080
@@ -41,6 +78,8 @@ containers:
 
 volumes:
   - name: change-log-outbox
-    emptyDir: {}
+    persistentVolumeClaim:
+      claimName: consul-change-logger-outbox
   - name: change-logger-dp-keys
-    emptyDir: {}
+    persistentVolumeClaim:
+      claimName: consul-change-logger-dp-keys

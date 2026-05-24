@@ -4,7 +4,7 @@ namespace ConsulChangeLogger.Proxy.Authentication;
 
 internal static class LoginPage
 {
-    public static async Task WriteAsync(HttpContext context, string? error = null)
+    public static async Task WriteAsync(HttpContext context, string csrfToken, string? error = null)
     {
         context.Response.ContentType = "text/html; charset=utf-8";
         var errorHtml = string.IsNullOrWhiteSpace(error)
@@ -34,6 +34,7 @@ internal static class LoginPage
     <form method="post" action="/login">
       <h1>ConsulChangeLogger</h1>
       {{errorHtml}}
+      <input name="csrf_token" type="hidden" value="{{WebUtility.HtmlEncode(csrfToken)}}">
       <label for="email">Email</label>
       <input id="email" name="email" type="email" autocomplete="username" required autofocus>
       <label for="password">Password</label>

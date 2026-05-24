@@ -12,3 +12,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Durable outbox for local change-record persistence and Elasticsearch delivery.
 - Consul KV based non-secret runtime configuration.
 - Docker Compose and Kubernetes examples.
+- LDAP group allowlist support.
+- Elasticsearch basic auth/API key support through secret-backed environment variables.
+- Non-root container and Kubernetes PVC/securityContext examples.
+- Login CSRF validation, browser hardening headers, and Consul path/method restrictions.

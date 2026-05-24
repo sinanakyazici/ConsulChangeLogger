@@ -11,6 +11,7 @@ internal sealed record AuthOptions
     public string LdapBindPassword { get; init; } = string.Empty;
     public string LdapBaseDn { get; init; } = string.Empty;
     public string LdapUserFilter { get; init; } = "(mail={0})";
+    public string LdapGroupFilter { get; init; } = string.Empty;
 
     public static AuthOptions FromConfiguration(IReadOnlyDictionary<string, string> config) => new()
     {
@@ -20,6 +21,7 @@ internal sealed record AuthOptions
         LdapBindDn = ConfigValue.ReadString(config, "LDAP_BIND_DN", string.Empty),
         LdapBindPassword = Environment.GetEnvironmentVariable("LDAP_BIND_PASSWORD") ?? string.Empty,
         LdapBaseDn = ConfigValue.ReadString(config, "LDAP_BASE_DN", string.Empty),
-        LdapUserFilter = ConfigValue.ReadString(config, "LDAP_USER_FILTER", "(mail={0})")
+        LdapUserFilter = ConfigValue.ReadString(config, "LDAP_USER_FILTER", "(mail={0})"),
+        LdapGroupFilter = ConfigValue.ReadString(config, "LDAP_GROUP_FILTER", string.Empty)
     };
 }

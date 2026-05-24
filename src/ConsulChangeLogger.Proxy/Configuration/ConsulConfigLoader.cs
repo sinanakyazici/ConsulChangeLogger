@@ -7,13 +7,17 @@ internal static class ConsulConfigLoader
 {
     private static readonly string[] ForbiddenKeys =
     [
-        "LDAP_BIND_PASSWORD"
+        "LDAP_BIND_PASSWORD",
+        "ELASTICSEARCH_USERNAME",
+        "ELASTICSEARCH_PASSWORD",
+        "ELASTICSEARCH_API_KEY"
     ];
 
     private static readonly string[] Keys =
     [
         "LISTEN_PORT",
         "CONSUL_UPSTREAM_URL",
+        "CONSUL_ALLOWED_PATH_PREFIXES",
         "ELASTICSEARCH_URL",
         "CHANGE_LOG_INDEX",
         "CHANGE_LOG_OUTBOX_PATH",
@@ -29,7 +33,8 @@ internal static class ConsulConfigLoader
         "LDAP_URL",
         "LDAP_BIND_DN",
         "LDAP_BASE_DN",
-        "LDAP_USER_FILTER"
+        "LDAP_USER_FILTER",
+        "LDAP_GROUP_FILTER"
     ];
 
     public static async Task<IReadOnlyDictionary<string, string>> LoadAsync(BootstrapOptions bootstrapOptions, CancellationToken cancellationToken)

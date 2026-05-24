@@ -47,4 +47,8 @@ Only bootstrap values are expected from environment variables:
 
 Non-secret runtime configuration is read from Consul KV under `CONSUL_CONFIG_PREFIX`.
 
-Secret values must not be stored in Consul KV. `LDAP_BIND_PASSWORD` is read only from the environment.
+Secret values must not be stored in Consul KV. `LDAP_BIND_PASSWORD`, `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, and `ELASTICSEARCH_API_KEY` are read only from the environment.
+
+## Request Scope
+
+After authentication, ConsulChangeLogger forwards only paths matching `CONSUL_ALLOWED_PATH_PREFIXES`. `GET` and `HEAD` are allowed for those prefixes. Mutating methods are allowed only for Consul KV paths, so non-KV Consul API mutations are blocked at the proxy layer. Consul ACLs are still required in production.

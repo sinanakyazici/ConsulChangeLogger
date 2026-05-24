@@ -15,6 +15,19 @@ internal static class ProxyEndpoint
                 return;
             }
 
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect("/ui/");
+                return;
+            }
+
+            if (!ConsulRequestPolicy.IsAllowed(context.Request, options))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsync("Consul path or method is not allowed.");
+                return;
+            }
+
             var proxy = new ConsulProxy(
                 context,
                 options,

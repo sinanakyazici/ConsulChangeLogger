@@ -47,10 +47,13 @@ internal sealed class LdapAuthenticator
                 return false;
             }
 
-            using var connection = CreateConnection();
-            connection.AuthType = AuthType.Basic;
-            connection.Bind(new NetworkCredential(userDn, password));
-            return true;
+            using (var userConnection = CreateConnection())
+            {
+                userConnection.AuthType = AuthType.Basic;
+                userConnection.Bind(new NetworkCredential(userDn, password));
+            }
+
+            return IsUserAllowed(userDn, email);
         }
         catch (LdapException)
         {
@@ -71,6 +74,29 @@ internal sealed class LdapAuthenticator
         var request = new SearchRequest(options.LdapBaseDn, filter, SearchScope.Subtree, "distinguishedName", "dn", "mail", "userPrincipalName");
         var response = (SearchResponse)connection.SendRequest(request);
         return response.Entries.Count == 0 ? null : response.Entries[0].DistinguishedName;
+    }
+
+    private bool IsUserAllowed(string userDn, string email)
+    {
+        if (string.IsNullOrWhiteSpace(options.LdapGroupFilter))
+        {
+            return true;
+        }
+
+        using var connection = CreateConnection();
+        connection.AuthType = AuthType.Basic;
+        if (!string.IsNullOrWhiteSpace(options.LdapBindDn))
+        {
+            connection.Bind(new NetworkCredential(options.LdapBindDn, options.LdapBindPassword));
+        }
+
+        var filter = string.Format(
+            options.LdapGroupFilter,
+            EscapeLdapFilterValue(userDn),
+            EscapeLdapFilterValue(email));
+        var request = new SearchRequest(options.LdapBaseDn, filter, SearchScope.Subtree, "distinguishedName", "cn");
+        var response = (SearchResponse)connection.SendRequest(request);
+        return response.Entries.Count > 0;
     }
 
     private LdapConnection CreateConnection()
