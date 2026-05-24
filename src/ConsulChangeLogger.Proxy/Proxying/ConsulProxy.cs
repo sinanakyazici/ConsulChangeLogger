@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using ConsulChangeLogger.Core;
-using ConsulChangeLogger.Proxy.Audit;
+using ConsulChangeLogger.Proxy.ChangeLogging;
 
 namespace ConsulChangeLogger.Proxy.Proxying;
 
@@ -20,29 +20,29 @@ internal sealed class ConsulProxy
     };
 
     private readonly HttpContext context;
-    private readonly AuditOptions options;
+    private readonly ChangeLoggerOptions options;
     private readonly IHttpClientFactory httpClientFactory;
     private readonly ReadCache readCache;
-    private readonly AuditSink auditSink;
+    private readonly ChangeRecordSink changeRecordSink;
 
     public ConsulProxy(
         HttpContext context,
-        AuditOptions options,
+        ChangeLoggerOptions options,
         IHttpClientFactory httpClientFactory,
         ReadCache readCache,
-        AuditSink auditSink)
+        ChangeRecordSink changeRecordSink)
     {
         this.context = context;
         this.options = options;
         this.httpClientFactory = httpClientFactory;
         this.readCache = readCache;
-        this.auditSink = auditSink;
+        this.changeRecordSink = changeRecordSink;
     }
 
     public async Task HandleAsync()
     {
         var requestBodyBytes = await ReadRequestBodyAsync();
-        var requestBody = AuditHelpers.Truncate(Encoding.UTF8.GetString(requestBodyBytes), options.MaxBodyBytes);
+        var requestBody = ConsulKvChangeHelpers.Truncate(Encoding.UTF8.GetString(requestBodyBytes), options.MaxBodyBytes);
         using var upstreamRequest = BuildUpstreamRequest(requestBodyBytes);
         using var upstreamResponse = await httpClientFactory
             .CreateClient("consul")
@@ -50,7 +50,7 @@ internal sealed class ConsulProxy
 
         var responseBodyBytes = await upstreamResponse.Content.ReadAsByteArrayAsync(context.RequestAborted);
         await WriteDownstreamResponseAsync(upstreamResponse, responseBodyBytes);
-        await CaptureAuditAsync(requestBody, upstreamResponse, responseBodyBytes);
+        await CaptureChangeRecordAsync(requestBody, upstreamResponse, responseBodyBytes);
     }
 
     private async Task<byte[]> ReadRequestBodyAsync()
@@ -116,15 +116,15 @@ internal sealed class ConsulProxy
         await context.Response.Body.WriteAsync(responseBodyBytes, context.RequestAborted);
     }
 
-    private async Task CaptureAuditAsync(string requestBody, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
+    private async Task CaptureChangeRecordAsync(string requestBody, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
     {
         var sourcePath = context.Request.Path + context.Request.QueryString;
-        if (!AuditHelpers.IsKvPath(sourcePath))
+        if (!ConsulKvChangeHelpers.IsKvPath(sourcePath))
         {
             return;
         }
 
-        var action = AuditHelpers.KvAction(context.Request.Method);
+        var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
         if (action == "kv_other")
         {
             return;
@@ -135,17 +135,17 @@ internal sealed class ConsulProxy
         var requestId = context.Request.Headers.TryGetValue("X-Request-ID", out var value) && !string.IsNullOrWhiteSpace(value)
             ? value.ToString()
             : eventId;
-        var kvKey = AuditHelpers.KvKeyFromPath(sourcePath);
+        var kvKey = ConsulKvChangeHelpers.KvKeyFromPath(sourcePath);
         var clientIp = context.Connection.RemoteIpAddress?.ToString();
         var userEmail = context.User.FindFirstValue(ClaimTypes.Email) ?? context.User.Identity?.Name;
         var userAgent = context.Request.Headers.UserAgent.ToString();
-        var identity = AuditHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
-        var responseBody = AuditHelpers.Truncate(Encoding.UTF8.GetString(responseBodyBytes), options.MaxBodyBytes);
+        var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
+        var responseBody = ConsulKvChangeHelpers.Truncate(Encoding.UTF8.GetString(responseBodyBytes), options.MaxBodyBytes);
         var responseCode = (int)upstreamResponse.StatusCode;
 
-        if (action == "kv_read" && AuditHelpers.IsSuccess(responseCode))
+        if (action == "kv_read" && ConsulKvChangeHelpers.IsSuccess(responseCode))
         {
-            var oldValue = AuditHelpers.ExtractReadValue(sourcePath, responseBody);
+            var oldValue = ConsulKvChangeHelpers.ExtractReadValue(sourcePath, responseBody);
             readCache.Store(identity, oldValue, timestamp, requestId);
             return;
         }
@@ -156,7 +156,7 @@ internal sealed class ConsulProxy
         }
 
         var read = readCache.Get(identity);
-        var auditEvent = new AuditEvent
+        var changeRecord = new ChangeRecord
         {
             Timestamp = timestamp,
             EventId = eventId,
@@ -167,7 +167,7 @@ internal sealed class ConsulProxy
             OldValueReadRequestId = read?.RequestId,
             NewValue = action == "kv_write" ? requestBody : null,
             DeleteConfirmed = action == "kv_delete",
-            Success = AuditHelpers.IsSuccess(responseCode),
+            Success = ConsulKvChangeHelpers.IsSuccess(responseCode),
             ResponseCode = responseCode,
             ClientIp = clientIp,
             UserEmail = userEmail,
@@ -176,6 +176,6 @@ internal sealed class ConsulProxy
             SourcePath = sourcePath
         };
 
-        await auditSink.SendAsync(auditEvent, context.RequestAborted);
+        await changeRecordSink.SendAsync(changeRecord, context.RequestAborted);
     }
 }

@@ -1,5 +1,5 @@
 using ConsulChangeLogger.Core;
-using ConsulChangeLogger.Proxy.Audit;
+using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -10,7 +10,7 @@ internal static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddConsulChangeLoggerServices(
         this IServiceCollection services,
-        AuditOptions options,
+        ChangeLoggerOptions options,
         AuthOptions authOptions)
     {
         Directory.CreateDirectory(options.DataProtectionPath);
@@ -24,7 +24,7 @@ internal static class ServiceCollectionExtensions
             .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(cookieOptions =>
             {
-                cookieOptions.Cookie.Name = "consul_audit_auth";
+                cookieOptions.Cookie.Name = "consul_change_logger_auth";
                 cookieOptions.Cookie.HttpOnly = true;
                 cookieOptions.Cookie.SameSite = SameSiteMode.Lax;
                 cookieOptions.Cookie.SecurePolicy = options.AuthCookieSecure
@@ -51,9 +51,9 @@ internal static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(options.ElasticsearchUrl);
             client.Timeout = TimeSpan.FromSeconds(10);
         });
-        services.AddSingleton<AuditQueue>();
-        services.AddSingleton<AuditSink>();
-        services.AddHostedService<AuditDispatchWorker>();
+        services.AddSingleton<ChangeRecordQueue>();
+        services.AddSingleton<ChangeRecordSink>();
+        services.AddHostedService<ChangeRecordDispatchWorker>();
 
         return services;
     }

@@ -9,11 +9,11 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./logs:/var/log/audit
+      - ./outbox:/var/lib/consul-change-logger/outbox
       - ./data-protection:/var/lib/consul-change-logger/dp-keys
     networks:
-      - consul-audit-net
+      - consul-change-logger-net
 
 networks:
-  consul-audit-net:
+  consul-change-logger-net:
     external: true

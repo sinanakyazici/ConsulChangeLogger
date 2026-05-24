@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace ConsulChangeLogger.Core;
 
-public static class AuditHelpers
+public static class ConsulKvChangeHelpers
 {
     public static bool IsSuccess(int statusCode) => statusCode is >= 200 and < 300;
 

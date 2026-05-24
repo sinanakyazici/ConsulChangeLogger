@@ -24,7 +24,7 @@ The current test project is a lightweight console runner. If you add behavior wi
 
 - Keep changes scoped to one concern.
 - Document behavior changes in `README.md` or `docs/`.
-- Do not commit generated local state such as `logs/`, `data-protection/`, `bin/`, or `obj/`.
+- Do not commit generated local state such as `outbox/`, `data-protection/`, `bin/`, or `obj/`.
 - Do not add secrets or environment-specific values to examples.
 
 ## Coding Guidelines
@@ -32,5 +32,5 @@ The current test project is a lightweight console runner. If you add behavior wi
 - Keep `Program.cs` as a composition root.
 - Put Consul forwarding behavior under `src/ConsulChangeLogger.Proxy/Proxying`.
 - Put LDAP and login behavior under `src/ConsulChangeLogger.Proxy/Authentication`.
-- Put audit delivery behavior under `src/ConsulChangeLogger.Proxy/Audit`.
+- Put change record delivery behavior under `src/ConsulChangeLogger.Proxy/ChangeLogging`.
 - Keep shared value parsing and event models under `src/ConsulChangeLogger.Core`.

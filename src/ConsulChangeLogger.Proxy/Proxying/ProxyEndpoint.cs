@@ -1,11 +1,11 @@
 using ConsulChangeLogger.Core;
-using ConsulChangeLogger.Proxy.Audit;
+using ConsulChangeLogger.Proxy.ChangeLogging;
 
 namespace ConsulChangeLogger.Proxy.Proxying;
 
 internal static class ProxyEndpoint
 {
-    public static WebApplication MapConsulProxyEndpoint(this WebApplication app, AuditOptions options)
+    public static WebApplication MapConsulProxyEndpoint(this WebApplication app, ChangeLoggerOptions options)
     {
         app.Map("/{**path}", async context =>
         {
@@ -20,7 +20,7 @@ internal static class ProxyEndpoint
                 options,
                 app.Services.GetRequiredService<IHttpClientFactory>(),
                 app.Services.GetRequiredService<ReadCache>(),
-                app.Services.GetRequiredService<AuditSink>());
+                app.Services.GetRequiredService<ChangeRecordSink>());
 
             await proxy.HandleAsync();
         });

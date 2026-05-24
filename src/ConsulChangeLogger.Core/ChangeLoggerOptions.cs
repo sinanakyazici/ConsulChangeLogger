@@ -1,28 +1,30 @@
 namespace ConsulChangeLogger.Core;
 
-public sealed record AuditOptions
+public sealed record ChangeLoggerOptions
 {
     public string ConsulUpstreamUrl { get; init; } = "http://consul:8500";
     public string ElasticsearchUrl { get; init; } = "http://elasticsearch:9200";
-    public string AuditIndex { get; init; } = "consul-change-logger";
-    public string AuditOutboxPath { get; init; } = "/var/log/audit/outbox";
+    public string ChangeRecordIndex { get; init; } = "consul-change-logger";
+    public string ChangeRecordOutboxPath { get; init; } = "/var/lib/consul-change-logger/outbox";
     public string DataProtectionPath { get; init; } = "/var/lib/consul-change-logger/dp-keys";
     public int ReadMatchWindowSeconds { get; init; } = 1800;
     public int MaxBodyBytes { get; init; } = 8192;
-    public int AuditQueueCapacity { get; init; } = 1000;
+    public int ChangeRecordQueueCapacity { get; init; } = 1000;
+    public int ChangeRecordRetentionDays { get; init; } = 30;
     public int ElasticsearchRetryDelaySeconds { get; init; } = 2;
     public bool AuthCookieSecure { get; init; }
 
-    public static AuditOptions FromConfiguration(IReadOnlyDictionary<string, string> config) => new()
+    public static ChangeLoggerOptions FromConfiguration(IReadOnlyDictionary<string, string> config) => new()
     {
         ConsulUpstreamUrl = ReadString(config, "CONSUL_UPSTREAM_URL", "http://consul:8500").TrimEnd('/'),
         ElasticsearchUrl = ReadString(config, "ELASTICSEARCH_URL", "http://elasticsearch:9200").TrimEnd('/'),
-        AuditIndex = ReadString(config, "AUDIT_INDEX", "consul-change-logger"),
-        AuditOutboxPath = ReadString(config, "AUDIT_OUTBOX_PATH", "/var/log/audit/outbox"),
+        ChangeRecordIndex = ReadString(config, "CHANGE_LOG_INDEX", "consul-change-logger"),
+        ChangeRecordOutboxPath = ReadString(config, "CHANGE_LOG_OUTBOX_PATH", "/var/lib/consul-change-logger/outbox"),
         DataProtectionPath = ReadString(config, "DATA_PROTECTION_PATH", "/var/lib/consul-change-logger/dp-keys"),
         ReadMatchWindowSeconds = ReadPositiveInt(config, "READ_MATCH_WINDOW_SECONDS", 1800),
         MaxBodyBytes = ReadPositiveInt(config, "MAX_BODY_BYTES", 8192),
-        AuditQueueCapacity = ReadPositiveInt(config, "AUDIT_QUEUE_CAPACITY", 1000),
+        ChangeRecordQueueCapacity = ReadPositiveInt(config, "CHANGE_LOG_QUEUE_CAPACITY", 1000),
+        ChangeRecordRetentionDays = ReadPositiveInt(config, "CHANGE_LOG_RETENTION_DAYS", 30),
         ElasticsearchRetryDelaySeconds = ReadPositiveInt(config, "ELASTICSEARCH_RETRY_DELAY_SECONDS", 2),
         AuthCookieSecure = ReadBool(config, "AUTH_COOKIE_SECURE", false)
     };

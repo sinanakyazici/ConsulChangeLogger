@@ -2,6 +2,7 @@
 **/obj/
 **/__pycache__/
 logs/
+outbox/
 data-protection/
 dotnet/
 .git/

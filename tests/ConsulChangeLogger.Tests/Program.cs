@@ -6,17 +6,17 @@ var tests = new List<(string Name, Action Test)>
 {
     ("extracts raw value", () =>
     {
-        Equal("{ \"a\" : 1 }", AuditHelpers.ExtractReadValue("/v1/kv/test/test1?raw", "{ \"a\" : 1 }"));
+        Equal("{ \"a\" : 1 }", ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/test/test1?raw", "{ \"a\" : 1 }"));
     }),
     ("decodes consul kv value", () =>
     {
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes("{ \"a\" : 1 }"));
         var body = JsonSerializer.Serialize(new[] { new { Key = "test/test1", Value = encoded } });
-        Equal("{ \"a\" : 1 }", AuditHelpers.ExtractReadValue("/v1/kv/test/test1?dc=dc1", body));
+        Equal("{ \"a\" : 1 }", ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/test/test1?dc=dc1", body));
     }),
     ("ignores key list response", () =>
     {
-        IsNull(AuditHelpers.ExtractReadValue("/v1/kv/?keys", JsonSerializer.Serialize(new[] { "test/" })));
+        IsNull(ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/?keys", JsonSerializer.Serialize(new[] { "test/" })));
     }),
     ("ignores multi key response", () =>
     {
@@ -26,11 +26,11 @@ var tests = new List<(string Name, Action Test)>
             new { Key = "test/a", Value = encoded },
             new { Key = "test/b", Value = encoded }
         });
-        IsNull(AuditHelpers.ExtractReadValue("/v1/kv/test?recurse", body));
+        IsNull(ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/test?recurse", body));
     }),
     ("extracts kv key without query", () =>
     {
-        Equal("test/test1", AuditHelpers.KvKeyFromPath("/v1/kv/test/test1?dc=dc1"));
+        Equal("test/test1", ConsulKvChangeHelpers.KvKeyFromPath("/v1/kv/test/test1?dc=dc1"));
     })
 };
 

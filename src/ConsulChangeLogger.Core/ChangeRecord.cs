@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace ConsulChangeLogger.Core;
 
-public sealed record AuditEvent
+public sealed record ChangeRecord
 {
     [JsonPropertyName("@timestamp")]
     public required string Timestamp { get; init; }

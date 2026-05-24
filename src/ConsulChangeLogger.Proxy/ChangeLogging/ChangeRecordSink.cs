@@ -4,9 +4,9 @@ using System.Text.Json;
 using ConsulChangeLogger.Core;
 using Serilog;
 
-namespace ConsulChangeLogger.Proxy.Audit;
+namespace ConsulChangeLogger.Proxy.ChangeLogging;
 
-internal sealed class AuditSink
+internal sealed class ChangeRecordSink
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -15,17 +15,17 @@ internal sealed class AuditSink
     };
 
     private readonly IHttpClientFactory httpClientFactory;
-    private readonly AuditOptions options;
-    private readonly AuditQueue auditQueue;
+    private readonly ChangeLoggerOptions options;
+    private readonly ChangeRecordQueue changeRecordQueue;
 
-    public AuditSink(
+    public ChangeRecordSink(
         IHttpClientFactory httpClientFactory,
-        AuditOptions options,
-        AuditQueue auditQueue)
+        ChangeLoggerOptions options,
+        ChangeRecordQueue changeRecordQueue)
     {
         this.httpClientFactory = httpClientFactory;
         this.options = options;
-        this.auditQueue = auditQueue;
+        this.changeRecordQueue = changeRecordQueue;
     }
 
     public async Task WaitForElasticsearchAsync(CancellationToken cancellationToken)
@@ -81,7 +81,7 @@ internal sealed class AuditSink
         using var content = JsonContent(mapping);
         using var response = await httpClientFactory
             .CreateClient("elasticsearch")
-            .PutAsync($"/{options.AuditIndex}", content, cancellationToken);
+            .PutAsync($"/{options.ChangeRecordIndex}", content, cancellationToken);
 
         if (response.StatusCode != HttpStatusCode.BadRequest)
         {
@@ -89,21 +89,28 @@ internal sealed class AuditSink
         }
     }
 
-    public async Task SendAsync(AuditEvent auditEvent, CancellationToken cancellationToken)
+    public async Task SendAsync(ChangeRecord changeRecord, CancellationToken cancellationToken)
     {
-        var eventJson = JsonSerializer.Serialize(auditEvent, JsonOptions);
-        var outboxPath = BuildOutboxPath(auditEvent.EventId);
+        var eventJson = JsonSerializer.Serialize(changeRecord, JsonOptions);
+        ChangeRecordOutbox.DeleteExpiredDailyDirectories(
+            options.ChangeRecordOutboxPath,
+            options.ChangeRecordRetentionDays,
+            DateTimeOffset.UtcNow);
 
-        Directory.CreateDirectory(options.AuditOutboxPath);
+        var outboxPath = ChangeRecordOutbox.BuildPath(
+            options.ChangeRecordOutboxPath,
+            changeRecord.EventId,
+            ReadTimestamp(changeRecord.Timestamp));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(outboxPath)!);
         await File.WriteAllTextAsync(outboxPath, eventJson, Encoding.UTF8, cancellationToken);
-        await auditQueue.EnqueueAsync(outboxPath, cancellationToken);
+        await changeRecordQueue.EnqueueAsync(outboxPath, cancellationToken);
     }
 
-    private string BuildOutboxPath(string requestId)
-    {
-        var safeName = Uri.EscapeDataString(requestId).Replace("%", "_", StringComparison.Ordinal);
-        return Path.Combine(options.AuditOutboxPath, $"{safeName}.json");
-    }
+    private static DateTimeOffset ReadTimestamp(string timestamp) =>
+        DateTimeOffset.TryParse(timestamp, out var parsed)
+            ? parsed
+            : DateTimeOffset.UtcNow;
 
     private static StringContent JsonContent(object value) =>
         new(JsonSerializer.Serialize(value, JsonOptions), Encoding.UTF8, "application/json");

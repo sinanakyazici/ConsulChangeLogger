@@ -18,7 +18,7 @@ ConsulChangeLogger.Proxy
 
 ## Projects
 
-- `src/ConsulChangeLogger.Proxy`: ASP.NET Core app, login flow, Consul forwarding, audit delivery.
+- `src/ConsulChangeLogger.Proxy`: ASP.NET Core app, login flow, Consul forwarding, change record delivery.
 - `src/ConsulChangeLogger.Core`: shared models and KV parsing helpers.
 - `tests/ConsulChangeLogger.Tests`: lightweight executable test runner for parsing edge cases.
 
@@ -32,11 +32,11 @@ This matches the Consul UI workflow where users read a KV value before changing 
 
 For each KV write/delete event:
 
-1. write JSON to `AUDIT_OUTBOX_PATH`
+1. write JSON to `CHANGE_LOG_OUTBOX_PATH`
 2. enqueue the outbox file for Elasticsearch delivery
 3. delete the outbox file only after Elasticsearch accepts it
 
-If Elasticsearch is unavailable, the background worker retries from the outbox. For production, mount `AUDIT_OUTBOX_PATH` on persistent storage.
+Outbox files are stored under daily directories named `yyyy-MM-dd`. If Elasticsearch is unavailable, the background worker retries from the outbox. Expired daily directories are deleted according to `CHANGE_LOG_RETENTION_DAYS`, which defaults to 30 days. For production, mount `CHANGE_LOG_OUTBOX_PATH` on persistent storage.
 
 ## Configuration
 

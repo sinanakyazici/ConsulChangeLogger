@@ -1,5 +1,5 @@
 using ConsulChangeLogger.Core;
-using ConsulChangeLogger.Proxy.Audit;
+using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Authentication;
 using ConsulChangeLogger.Proxy.Configuration;
 using ConsulChangeLogger.Proxy.DependencyInjection;
@@ -17,7 +17,7 @@ Log.Logger = new LoggerConfiguration()
 
 var bootstrapOptions = BootstrapOptions.FromEnvironment();
 var consulConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, CancellationToken.None);
-var options = AuditOptions.FromConfiguration(consulConfig);
+var options = ChangeLoggerOptions.FromConfiguration(consulConfig);
 var authOptions = AuthOptions.FromConfiguration(consulConfig);
 var listenPort = ConfigValue.ReadString(consulConfig, "LISTEN_PORT", Environment.GetEnvironmentVariable("LISTEN_PORT") ?? "8080");
 var builder = WebApplication.CreateBuilder(args);
@@ -40,7 +40,7 @@ app.UseAuthorization();
 
 using (var scope = app.Services.CreateScope())
 {
-    var sink = scope.ServiceProvider.GetRequiredService<AuditSink>();
+    var sink = scope.ServiceProvider.GetRequiredService<ChangeRecordSink>();
     await sink.WaitForElasticsearchAsync(app.Lifetime.ApplicationStopping);
     await sink.EnsureIndexAsync(app.Lifetime.ApplicationStopping);
 }

@@ -10,24 +10,24 @@ containers:
       - name: CONSUL_CONFIG_PREFIX
         value: consul-change-logger/config
     ports:
-      - name: audit-http
+      - name: logger-http
         containerPort: 8080
     volumeMounts:
-      - name: audit-log
-        mountPath: /var/log/audit
-      - name: audit-dp-keys
+      - name: change-log-outbox
+        mountPath: /var/lib/consul-change-logger/outbox
+      - name: change-logger-dp-keys
         mountPath: /var/lib/consul-change-logger/dp-keys
     readinessProbe:
       httpGet:
         path: /health/ready
-        port: audit-http
+        port: logger-http
       initialDelaySeconds: 10
       periodSeconds: 10
       timeoutSeconds: 3
     livenessProbe:
       httpGet:
         path: /health/live
-        port: audit-http
+        port: logger-http
       initialDelaySeconds: 10
       periodSeconds: 30
       timeoutSeconds: 3
@@ -40,7 +40,7 @@ containers:
         memory: 512Mi
 
 volumes:
-  - name: audit-log
+  - name: change-log-outbox
     emptyDir: {}
-  - name: audit-dp-keys
+  - name: change-logger-dp-keys
     emptyDir: {}
