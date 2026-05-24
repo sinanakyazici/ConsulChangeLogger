@@ -234,6 +234,8 @@ Example manifests are available under `k8s/`:
 - `k8s/secret-example.yaml`
 - `k8s/consul-config-seed.example.sh`
 
+Step-by-step onboarding for an existing Kubernetes environment is available in [docs/kubernetes-onboarding-guide.md](docs/kubernetes-onboarding-guide.md).
+
 For production deployments:
 
 - route all Consul UI/API traffic through Consul Change Logger
