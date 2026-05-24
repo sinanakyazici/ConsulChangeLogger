@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ConsulChangeLogger.Tests</AssemblyName>
     <RootNamespace>ConsulChangeLogger.Tests</RootNamespace>
-    <Product>ConsulChangeLogger</Product>
+    <Product>Consul Change Logger</Product>
     <AssemblyTitle>ConsulChangeLogger.Tests</AssemblyTitle>
   </PropertyGroup>
 

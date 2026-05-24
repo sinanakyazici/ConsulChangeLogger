@@ -53,7 +53,7 @@ app.MapConsulProxyEndpoint(options);
 
 try
 {
-    Log.Information("ConsulChangeLogger listening on port {ListenPort}, upstream {ConsulUpstreamUrl}, config prefix {ConfigPrefix}",
+    Log.Information("Consul Change Logger listening on port {ListenPort}, upstream {ConsulUpstreamUrl}, config prefix {ConfigPrefix}",
         listenPort,
         options.ConsulUpstreamUrl,
         bootstrapOptions.ConfigPrefix);

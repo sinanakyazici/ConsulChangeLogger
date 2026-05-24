@@ -1,20 +1,48 @@
-# ConsulChangeLogger
+# Consul Change Logger
 
 [![CI](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
 
-ConsulChangeLogger is a .NET reverse proxy that records Consul KV changes made through Consul UI/API traffic. It captures who changed which key, from which client, when it happened, and the best available old/new value pair.
+Consul Change Logger is a .NET reverse proxy that records Consul KV changes made through Consul UI/API traffic. It captures who changed which key, from which client, when it happened, and the best available old/new value pair.
 
 It is intentionally focused on change logging. It does not replace Consul ACLs, it does not implement business approval workflows, and it does not produce generic access logs.
 
-```text
-Browser
-  -> ConsulChangeLogger
-      -> Consul UI/API
-      -> durable outbox
-      -> Elasticsearch -> Kibana
+## Architecture
+
+```mermaid
+flowchart LR
+    user["fa:fa-user User browser"]
+    ingress["fa:fa-route Ingress / Service"]
+    proxy["fa:fa-shield Consul Change Logger<br/>Reverse proxy + login gate"]
+    ldap["fa:fa-lock LDAP<br/>Authentication + group allowlist"]
+    consul["fa:fa-server Consul UI / HTTP API"]
+    cache["fa:fa-clock Read cache<br/>old_value lookup"]
+    outbox["fa:fa-folder-open Daily outbox<br/>durable retry buffer"]
+    elastic["fa:fa-database Elasticsearch<br/>change record index"]
+    kibana["fa:fa-chart-line Kibana<br/>search and dashboards"]
+
+    user --> ingress --> proxy
+    proxy -->|login validation| ldap
+    proxy -->|forward allowed Consul paths| consul
+    proxy -->|remember successful KV reads| cache
+    proxy -->|write/delete change record| outbox
+    outbox -->|retry until accepted| elastic
+    elastic --> kibana
+
+    classDef userNode fill:#E8F3FF,stroke:#3B82F6,color:#0F172A,stroke-width:1.5px
+    classDef proxyNode fill:#FFF7ED,stroke:#F97316,color:#111827,stroke-width:2px
+    classDef authNode fill:#F0FDF4,stroke:#22C55E,color:#052E16,stroke-width:1.5px
+    classDef dataNode fill:#FDF2F8,stroke:#DB2777,color:#500724,stroke-width:1.5px
+    classDef storageNode fill:#FEFCE8,stroke:#CA8A04,color:#422006,stroke-width:1.5px
+    classDef observeNode fill:#F5F3FF,stroke:#7C3AED,color:#2E1065,stroke-width:1.5px
+
+    class user,ingress userNode
+    class proxy proxyNode
+    class ldap,consul authNode
+    class cache,outbox storageNode
+    class elastic,kibana observeNode
 ```
 
 ## Key Capabilities
@@ -53,8 +81,8 @@ Browser
 
 ## Security Model
 
-- Keep Consul ACLs enabled in production. ConsulChangeLogger is not an authorization layer.
-- ConsulChangeLogger records raw KV values by design. Do not store sensitive values in Consul KV if those values must not be indexed in Elasticsearch.
+- Keep Consul ACLs enabled in production. Consul Change Logger is not an authorization layer.
+- Consul Change Logger records raw KV values by design. Do not store sensitive values in Consul KV if those values must not be indexed in Elasticsearch.
 - `LDAP_BIND_PASSWORD` is read only from environment variables or secret-backed deployment configuration. It is not loaded from Consul KV.
 - Terminate HTTPS at ingress or load balancer level and set `AUTH_COOKIE_SECURE=true`.
 - Persist both the outbox path and data-protection key path when running more than a temporary local environment.
@@ -64,7 +92,7 @@ Browser
 
 ## Quick Start
 
-The sample setup starts Consul, Elasticsearch, and Kibana as independent containers, then runs ConsulChangeLogger through Docker Compose.
+The sample setup starts Consul, Elasticsearch, and Kibana as independent containers, then runs Consul Change Logger through Docker Compose.
 
 ```powershell
 docker network create consul-change-logger-net
@@ -107,13 +135,13 @@ docker exec consul consul kv put consul-change-logger/config/LDAP_GROUP_FILTER "
 docker exec consul consul kv delete consul-change-logger/config/LDAP_BIND_PASSWORD
 ```
 
-Start ConsulChangeLogger:
+Start Consul Change Logger:
 
 ```powershell
 docker compose up -d --build
 ```
 
-Open Consul UI through ConsulChangeLogger:
+Open Consul UI through Consul Change Logger:
 
 ```text
 http://localhost:8080/ui/
@@ -156,7 +184,7 @@ Runtime configuration is loaded from Consul KV under `CONSUL_CONFIG_PREFIX`.
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `LISTEN_PORT` | `8080` | HTTP port exposed by ConsulChangeLogger. |
+| `LISTEN_PORT` | `8080` | HTTP port exposed by Consul Change Logger. |
 | `CONSUL_ALLOWED_PATH_PREFIXES` | `/ui,/v1/kv,/v1/status,/v1/catalog,/v1/health,/v1/agent,/v1/internal` | Consul path prefixes allowed after login. Non-KV mutations are blocked. |
 | `ELASTICSEARCH_URL` | `http://elasticsearch:9200` | Elasticsearch endpoint. |
 | `CHANGE_LOG_INDEX` | `consul-change-logger` | Elasticsearch index for change records. |
@@ -208,7 +236,7 @@ Example manifests are available under `k8s/`:
 
 For production deployments:
 
-- route all Consul UI/API traffic through ConsulChangeLogger
+- route all Consul UI/API traffic through Consul Change Logger
 - mount `CHANGE_LOG_OUTBOX_PATH` on persistent storage
 - persist `DATA_PROTECTION_PATH`
 - provide `LDAP_BIND_PASSWORD` from Kubernetes Secret or an equivalent secret provider
@@ -250,7 +278,7 @@ docs                             Additional design notes
 
 ## Known Limits
 
-- `old_value` depends on a prior successful read through the same ConsulChangeLogger process by the same user/client/key identity.
+- `old_value` depends on a prior successful read through the same Consul Change Logger process by the same user/client/key identity.
 - If read and write traffic is routed to different replicas, `old_value` can be `null` unless sticky routing or shared state is added.
 - If the process restarts between read and write, `old_value` can be `null`.
 - Large request and response bodies are truncated at `MAX_BODY_BYTES`.

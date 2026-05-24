@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for considering a contribution to ConsulChangeLogger.
+Thanks for considering a contribution to Consul Change Logger.
 
 ## Development Prerequisites
 

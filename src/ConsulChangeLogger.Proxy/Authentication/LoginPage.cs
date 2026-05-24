@@ -17,7 +17,7 @@ internal static class LoginPage
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ConsulChangeLogger</title>
+  <title>Consul Change Logger</title>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fb; color: #172033; }
     main { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -32,7 +32,7 @@ internal static class LoginPage
 <body>
   <main>
     <form method="post" action="/login">
-      <h1>ConsulChangeLogger</h1>
+      <h1>Consul Change Logger</h1>
       {{errorHtml}}
       <input name="csrf_token" type="hidden" value="{{WebUtility.HtmlEncode(csrfToken)}}">
       <label for="email">Email</label>

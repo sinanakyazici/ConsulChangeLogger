@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ConsulChangeLogger.Core</AssemblyName>
     <RootNamespace>ConsulChangeLogger.Core</RootNamespace>
-    <Product>ConsulChangeLogger</Product>
+    <Product>Consul Change Logger</Product>
     <AssemblyTitle>ConsulChangeLogger.Core</AssemblyTitle>
   </PropertyGroup>
 </Project>
