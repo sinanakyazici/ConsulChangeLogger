@@ -22,6 +22,12 @@ internal sealed class SecurityHeadersMiddleware
             headers.TryAdd("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
         }
 
+        if (context.Request.Path.StartsWithSegments("/login"))
+        {
+            headers.TryAdd("Content-Security-Policy",
+                "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+        }
+
         await next(context);
     }
 }

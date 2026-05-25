@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ConsulChangeLogger.Core;
 using Serilog;
 
@@ -83,9 +84,28 @@ internal sealed class ChangeRecordSink
             .CreateClient("elasticsearch")
             .PutAsync($"/{options.ChangeRecordIndex}", content, cancellationToken);
 
-        if (response.StatusCode != HttpStatusCode.BadRequest)
+        if (!response.IsSuccessStatusCode)
         {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == HttpStatusCode.BadRequest && IsIndexAlreadyExists(body))
+            {
+                return;
+            }
+
             response.EnsureSuccessStatusCode();
+        }
+    }
+
+    private static bool IsIndexAlreadyExists(string body)
+    {
+        try
+        {
+            var node = JsonNode.Parse(body);
+            return node?["error"]?["type"]?.GetValue<string>() == "resource_already_exists_exception";
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 

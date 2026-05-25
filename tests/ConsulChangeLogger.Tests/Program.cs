@@ -186,11 +186,16 @@ var tests = new List<(string Name, Func<Task> Test)>
                 ["ELASTICSEARCH_RETRY_DELAY_SECONDS"] = "1"
             });
             var path = WriteChangeRecord(root);
-            var factory = new FakeHttpClientFactory((_, _) => new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError));
+            var attemptCount = 0;
+            var factory = new FakeHttpClientFactory((_, _) =>
+            {
+                Interlocked.Increment(ref attemptCount);
+                return new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
+            });
             var worker = new ChangeRecordDispatchWorker(new ChangeRecordQueue(options), factory, options);
 
             await worker.StartAsync(CancellationToken.None);
-            await Task.Delay(250);
+            await WaitUntilAsync(() => Volatile.Read(ref attemptCount) > 0, TimeSpan.FromSeconds(5));
             await worker.StopAsync(CancellationToken.None);
 
             IsTrue(File.Exists(path));

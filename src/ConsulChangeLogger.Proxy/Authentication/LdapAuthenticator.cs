@@ -1,5 +1,6 @@
 using System.DirectoryServices.Protocols;
 using System.Net;
+using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Authentication;
 
@@ -88,6 +89,10 @@ internal sealed class LdapAuthenticator
         if (!string.IsNullOrWhiteSpace(options.LdapBindDn))
         {
             connection.Bind(new NetworkCredential(options.LdapBindDn, options.LdapBindPassword));
+        }
+        else
+        {
+            Log.Warning("LDAP_GROUP_FILTER is set but LDAP_BIND_DN is not configured — group search will use anonymous bind and may fail silently.");
         }
 
         var filter = string.Format(

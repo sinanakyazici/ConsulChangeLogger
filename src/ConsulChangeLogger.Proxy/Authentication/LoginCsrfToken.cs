@@ -15,7 +15,8 @@ internal static class LoginCsrfToken
             HttpOnly = true,
             IsEssential = true,
             SameSite = SameSiteMode.Strict,
-            Secure = options.AuthCookieSecure || context.Request.IsHttps
+            Secure = options.AuthCookieSecure || context.Request.IsHttps,
+            MaxAge = TimeSpan.FromMinutes(30)
         });
         return token;
     }

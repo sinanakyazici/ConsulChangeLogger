@@ -32,6 +32,17 @@ builder.Host.UseSerilog((_, loggerConfiguration) =>
         .WriteTo.Console();
 });
 
+if (authOptions.Mode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
+{
+    Log.Warning("AUTH_MODE is 'disabled' — all requests are accepted without authentication. Set AUTH_MODE=ldap for production.");
+}
+
+if (authOptions.Mode.Equals("mock", StringComparison.OrdinalIgnoreCase) &&
+    authOptions.MockPassword == "Passw0rd!")
+{
+    Log.Warning("AUTH_MOCK_PASSWORD is using the default value. Set AUTH_MOCK_PASSWORD to a strong secret.");
+}
+
 builder.WebHost.UseUrls($"http://0.0.0.0:{listenPort}");
 builder.Services.AddConsulChangeLoggerServices(options, authOptions);
 
