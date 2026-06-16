@@ -24,6 +24,10 @@ internal static class ConsulConfigLoader
             BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl),
             Timeout = TimeSpan.FromSeconds(10)
         };
+        if (!string.IsNullOrWhiteSpace(bootstrapOptions.ConsulHttpToken))
+        {
+            httpClient.DefaultRequestHeaders.Add("X-Consul-Token", bootstrapOptions.ConsulHttpToken);
+        }
 
         var path = EscapeKvPath(bootstrapOptions.ConfigKey);
         var deadline = DateTimeOffset.UtcNow.Add(StartupTimeout);

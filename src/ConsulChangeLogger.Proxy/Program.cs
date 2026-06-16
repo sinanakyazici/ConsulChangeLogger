@@ -7,8 +7,6 @@ using ConsulChangeLogger.Proxy.Proxying;
 using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 using Serilog.Events;
-using System.Net.Http.Headers;
-using System.Text;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Debug()
@@ -44,19 +42,10 @@ builder.Services.AddSingleton<ChangeRecordQueue>();
 builder.Services.AddSingleton<ChangeRecordSink>();
 builder.Services.AddHostedService<ChangeRecordDispatchWorker>();
 
-builder.Services.AddHttpClient("consul", client =>
-{
-    client.BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl);
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
+builder.Services.AddHttpClient("consul", client => HttpClientConfigurator.ConfigureConsul(client, bootstrapOptions));
 
 var elasticsearchClient = builder.Services.AddHttpClient("elasticsearch", client =>
-{
-    client.BaseAddress = new Uri(runtimeConfig.Elasticsearch.Url!);
-    client.Timeout = TimeSpan.FromSeconds(10);
-    var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{runtimeConfig.Elasticsearch.Username}:{runtimeConfig.Elasticsearch.Password}"));
-    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
-});
+    HttpClientConfigurator.ConfigureElasticsearch(client, runtimeConfig.Elasticsearch));
 
 if (runtimeConfig.Elasticsearch.SkipCertificateValidation)
 {

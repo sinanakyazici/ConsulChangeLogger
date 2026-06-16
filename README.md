@@ -58,7 +58,7 @@ Relevant workflows:
 
 - Authenticates browser users with LDAP before they can access Consul UI or the Consul API through the proxy.
 - Proxies Consul UI assets and API requests to the upstream Consul endpoint.
-- Captures KV reads to build a best-effort `old_value`.
+- Captures KV reads and can prefetch single-key mutation targets to build a best-effort `old_value`.
 - Captures KV writes and deletes as audit records.
 - Writes each audit record to a local outbox file before Elasticsearch delivery.
 - Retries Elasticsearch delivery until the record is accepted.
@@ -100,6 +100,12 @@ The sidecar bootstrap contract is environment-variable based:
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
 - optional `CONSUL_HTTP_TOKEN`
+
+The application also accepts ASP.NET configuration-style keys as a fallback:
+
+- `ConsulConfiguration__UpstreamUrl`
+- `ConsulConfiguration__ConfigKey`
+- `ConsulConfiguration__HttpToken`
 
 All remaining runtime settings are read from Consul KV.
 
@@ -212,7 +218,9 @@ Each KV write or delete can produce a document like this:
   "new_value_json_validation_status": "valid_json",
   "new_value_is_valid_json": true,
   "new_value_json_error": null,
-  "delete_confirmed": false,
+  "create_detected": false,
+  "update_detected": true,
+  "delete_detected": false,
   "success": true,
   "response_code": 200,
   "client_ip": "::1",
@@ -228,6 +236,7 @@ Current behavior:
 
 - `old_value` is best-effort
 - the proxy caches the most recent successful KV read per user/client/key identity
+- if no matching cached read exists, the proxy can prefetch the current value before a single-key write or delete
 - if a matching read is not found, `old_value` can still be `null`
 
 ## JSON Validation
@@ -295,6 +304,14 @@ CONSUL_CONFIG_KEY
 CONSUL_HTTP_TOKEN (optional)
 ```
 
+Fallback binding keys:
+
+```text
+ConsulConfiguration__UpstreamUrl
+ConsulConfiguration__ConfigKey
+ConsulConfiguration__HttpToken
+```
+
 Runtime configuration is read from the Consul KV key referenced by `CONSUL_CONFIG_KEY`.
 
 Example runtime configuration:
@@ -333,8 +350,8 @@ Example runtime configuration:
 
 Notes:
 
-- `SearchFilter` is kept for compatibility and future lookup scenarios, but direct bind authentication does not require it during login.
-- `BindDn` and `BindCredentials` are not used for login in direct bind mode. They are available for future LDAP search or enrichment scenarios.
+- `SearchFilter` is currently not used during direct bind login. It remains in the runtime contract for compatibility and future lookup scenarios.
+- `BindDn` and `BindCredentials` are currently not used during direct bind login.
 
 ## Runtime Verification
 
