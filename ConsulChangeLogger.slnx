@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="src/ConsulChangeLogger.Core/ConsulChangeLogger.Core.csproj" />
   <Project Path="src/ConsulChangeLogger.Proxy/ConsulChangeLogger.Proxy.csproj" />
+  <Project Path="tests/ConsulChangeLogger.Tests/ConsulChangeLogger.Tests.csproj" />
 </Solution>

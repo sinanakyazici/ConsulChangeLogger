@@ -104,6 +104,12 @@ Each KV write or delete can produce a document like this:
 }
 ```
 
+Current behavior:
+
+- `old_value` is not populated
+- no read cache or pre-read matching is performed
+- `old_value` JSON metadata is therefore derived from `null`
+
 ## JSON Validation
 
 Consul Change Logger does not block invalid JSON on the server side. It records validation metadata and lets the operator decide what to do with that information.
