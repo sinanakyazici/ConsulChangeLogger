@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*.*.*"
   pull_request:
     branches:
       - main
@@ -44,39 +42,3 @@ jobs:
 
       - name: Docker build
         run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile -t consul-change-logger:ci .
-
-      - name: Derive release metadata
-        if: startsWith(github.ref, 'refs/tags/v')
-        id: version
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          IMAGE="ghcr.io/sinanakyazici/consul-change-logger"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare release bundle
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          mkdir -p dist
-          docker tag consul-change-logger:ci "${{ steps.version.outputs.image }}:${{ steps.version.outputs.tag }}"
-          docker tag consul-change-logger:ci "${{ steps.version.outputs.image }}:latest"
-          docker save \
-            --output dist/consul-change-logger-image.tar \
-            "${{ steps.version.outputs.image }}:${{ steps.version.outputs.tag }}" \
-            "${{ steps.version.outputs.image }}:latest"
-          helm package chart/consul-change-logger \
-            --version "${{ steps.version.outputs.version }}" \
-            --app-version "${{ steps.version.outputs.version }}" \
-            --destination dist
-
-      - name: Upload release bundle
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-bundle-${{ steps.version.outputs.version }}
-          path: dist/*
-          if-no-files-found: error
