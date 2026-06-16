@@ -88,7 +88,7 @@ It created only the product-owned PVC (if enabled) and prints the patch instruct
    Namespace: {{ .Values.existingConsul.namespace }}
    Service:   {{ .Values.existingConsul.uiServiceName }}
 
-   Save the following Service patch and apply it to the existing browser-facing Consul UI Service:
+   Save the following Service manifest if you prefer to manage the Service declaratively:
 
    apiVersion: v1
    kind: Service
@@ -100,6 +100,16 @@ It created only the product-owned PVC (if enabled) and prints the patch instruct
        - name: http
          port: {{ .Values.existingConsul.uiServicePort }}
          targetPort: logger-http
+
+   Or, if the existing Service already has one browser-facing port at index 0, patch only targetPort:
+
+   [
+     {
+       "op": "replace",
+       "path": "/spec/ports/0/targetPort",
+       "value": "logger-http"
+     }
+   ]
 
 5. Verify rollout and health:
 

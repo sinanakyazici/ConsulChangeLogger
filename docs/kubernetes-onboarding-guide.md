@@ -99,7 +99,7 @@ Single-pod operation keeps `old_value` matching deterministic because the read c
 Install the chart from GHCR OCI:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n <consul-namespace>
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n <consul-namespace>
 ```
 
 This chart intentionally creates only the product-owned PVC and prints the patch steps in `NOTES.txt`.
@@ -190,7 +190,25 @@ After:
 targetPort: logger-http
 ```
 
-Example patch target:
+If the Service already exists and already contains a single browser-facing port at index `0`, patch only `targetPort`:
+
+```powershell
+kubectl patch service <consul-ui-service-name> -n <consul-namespace> --type=json --patch-file .\k8s\consul-ui-service-targetport-patch.json
+```
+
+Patch file:
+
+```json
+[
+  {
+    "op": "replace",
+    "path": "/spec/ports/0/targetPort",
+    "value": "logger-http"
+  }
+]
+```
+
+Declarative example manifest:
 
 ```yaml
 apiVersion: v1
@@ -201,7 +219,7 @@ metadata:
 spec:
   ports:
     - name: http
-      port: 80
+      port: 8500
       targetPort: logger-http
 ```
 

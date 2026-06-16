@@ -60,6 +60,11 @@ app.UseSerilogRequestLogging(options =>
 {
     options.GetLevel = (httpContext, _, ex) =>
     {
+        if (httpContext.Request.Path.StartsWithSegments("/health"))
+        {
+            return LogEventLevel.Verbose;
+        }
+
         if (ex is not null || httpContext.Response.StatusCode >= 500)
         {
             return LogEventLevel.Error;

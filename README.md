@@ -80,19 +80,19 @@ The Helm chart intentionally creates only the product-owned PVC and prints patch
 Install example:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n consul
 ```
 
 Upgrade example:
 
 ```powershell
-helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n consul
 ```
 
 Dry-run example against the published OCI chart:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul --create-namespace --dry-run --debug
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n consul --create-namespace --dry-run --debug
 ```
 
 The sidecar bootstrap contract is environment-variable based:
@@ -116,7 +116,7 @@ For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` sha
 1. install the product-owned PVC:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n consul
 ```
 
 2. seed runtime config into:
@@ -134,7 +134,7 @@ kubectl patch statefulset consul-server -n consul --patch-file .\k8s\consul-serv
 4. patch the existing browser-facing Service:
 
 ```powershell
-kubectl patch service consul-ui -n consul --patch-file .\k8s\consul-ui-service-patch.yaml
+kubectl patch service consul-ui -n consul --type=json --patch-file .\k8s\consul-ui-service-targetport-patch.json
 ```
 
 5. verify rollout:
@@ -457,6 +457,7 @@ Supporting examples and notes:
 - [k8s/pvc-example.yaml](k8s/pvc-example.yaml)
 - [k8s/consul-server-sidecar-patch.yaml](k8s/consul-server-sidecar-patch.yaml)
 - [k8s/consul-ui-service-patch.yaml](k8s/consul-ui-service-patch.yaml)
+- [k8s/consul-ui-service-targetport-patch.json](k8s/consul-ui-service-targetport-patch.json)
 - [k8s/appsettings.consul.example.json](k8s/appsettings.consul.example.json)
 - [k8s/consul-config-seed.example.sh](k8s/consul-config-seed.example.sh)
 - [docs/kubernetes-onboarding-guide.md](docs/kubernetes-onboarding-guide.md)
