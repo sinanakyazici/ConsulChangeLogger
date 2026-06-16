@@ -3,11 +3,11 @@ namespace ConsulChangeLogger.Proxy.Configuration;
 internal sealed record BootstrapOptions
 {
     public string ConsulUpstreamUrl { get; init; } = "http://consul:8500";
-    public string ConfigPrefix { get; init; } = "consul-change-logger/config";
+    public string ConfigKey { get; init; } = "consul-change-logger/appsettings.json";
 
-    public static BootstrapOptions FromEnvironment() => new()
+    public static BootstrapOptions FromConfiguration(IConfiguration configuration) => new()
     {
-        ConsulUpstreamUrl = Environment.GetEnvironmentVariable("CONSUL_UPSTREAM_URL")?.TrimEnd('/') ?? "http://consul:8500",
-        ConfigPrefix = Environment.GetEnvironmentVariable("CONSUL_CONFIG_PREFIX")?.Trim('/') ?? "consul-change-logger/config"
+        ConsulUpstreamUrl = (configuration["ConsulConfiguration:UpstreamUrl"] ?? "http://consul:8500").TrimEnd('/'),
+        ConfigKey = (configuration["ConsulConfiguration:ConfigKey"] ?? "consul-change-logger/appsettings.json").Trim('/')
     };
 }

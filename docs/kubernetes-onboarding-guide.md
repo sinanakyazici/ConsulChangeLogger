@@ -16,14 +16,15 @@ Prepare these values before changing anything:
 | Consul container port | `8500` | Consul Change Logger forwards Consul HTTP UI/API traffic to this port inside the same pod. |
 | Consul UI Service name | `consul-ui` | This browser-facing Service must be updated so user traffic targets the sidecar port instead of the original Consul port. Service names can differ from workload names. |
 | Consul UI Service port | `80` | Ingress usually points to this Service port, so it must remain stable during the rollout. |
-| Public Consul hostname | `https://consul.company.local` | Used to verify browser login, secure cookie behavior, and final user access. |
-| Internal Consul URL from the same pod | `http://127.0.0.1:8500` | This becomes `CONSUL_UPSTREAM_URL`; it tells the sidecar where to forward Consul HTTP UI/API requests. |
+| Public Consul hostname | `https://consul.company.local` | Used to verify browser login and final user access. |
+| Internal Consul URL from the same pod | `http://127.0.0.1:8500` | This is configured in the application's `appsettings.json` as `ConsulConfiguration.UpstreamUrl`. |
 | Elasticsearch URL reachable from the pod | `https://elasticsearch.logging.svc.cluster.local:9200` | Change records are indexed here, and readiness checks depend on this endpoint. |
 | Kibana URL | `https://kibana.company.local` | Used by operators to create the data view and inspect change records. The application does not call Kibana. |
-| LDAP URL | `ldaps://ldap.company.local:636` | Used for login authentication. |
-| LDAP base DN | `dc=company,dc=local` | Defines where user and group searches start in the LDAP tree. |
+| LDAP domain | `ldap.company.local` | Hostname used for login authentication. |
+| LDAP port / secure port | `389` / `636` | Selected by `LdapConfiguration.UseSSL`. |
+| LDAP search base | `dc=company,dc=local` | Defines where user and group searches start in the LDAP tree. |
 | LDAP bind DN | `cn=readonly,ou=service-users,dc=company,dc=local` | Optional readonly account used for LDAP searches when anonymous search is not allowed. |
-| LDAP user filter | `(mail={0})` | Defines how a login email maps to an LDAP user. |
+| LDAP search filter | `(mail={0})` | Defines how a login value maps to an LDAP user. |
 | LDAP group allowlist filter | `(&(objectClass=group)(cn=consul-admins)(member={0}))` | Limits access to approved LDAP group members after successful authentication. |
 
 If you do not know these values, start with these discovery commands:
@@ -66,9 +67,7 @@ Consul Change Logger is added as a sidecar to that same Consul pod, so these res
 - Consul Deployment/StatefulSet
 - Consul UI Service that receives browser traffic, for example `consul-ui`
 - Consul Change Logger sidecar container
-- `consul-change-logger-secrets`
 - `consul-change-logger-outbox` PVC
-- `consul-change-logger-dp-keys` PVC
 
 Find it with:
 
@@ -116,31 +115,11 @@ Update `k8s/sidecar-snippet.yaml`:
 image: your-registry/consul-change-logger:1.0.0
 ```
 
-## 3. Create Kubernetes Secrets
+## 3. Protect the Configuration Prefix
 
-Create a secret for LDAP and Elasticsearch credentials. Do not store these values in Consul KV.
+All runtime settings, including LDAP and Elasticsearch credentials, are stored in one Consul KV JSON document. Enable Consul ACLs and restrict read access to `consul-change-logger/appsettings.json` before using real credentials.
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: consul-change-logger-secrets
-  namespace: consul
-type: Opaque
-stringData:
-  ldap-bind-password: change-me
-  elasticsearch-username: elastic
-  elasticsearch-password: change-me
-  elasticsearch-api-key: ""
-```
-
-Apply it:
-
-```powershell
-kubectl apply -f k8s/secret-example.yaml
-```
-
-Use either `ELASTICSEARCH_API_KEY` or `ELASTICSEARCH_USERNAME` + `ELASTICSEARCH_PASSWORD`. If API key is set, it takes precedence.
+Use either `Elasticsearch.ApiKey` or `Elasticsearch.Username` + `Elasticsearch.Password`. If API key is set, it takes precedence.
 
 ## 4. Create Persistent Volumes
 
@@ -149,7 +128,6 @@ Consul Change Logger needs persistent writable storage for:
 | Path | Purpose |
 | --- | --- |
 | `/var/lib/consul-change-logger/outbox` | Durable retry buffer for Elasticsearch delivery |
-| `/var/lib/consul-change-logger/dp-keys` | ASP.NET cookie protection keys |
 
 Apply the example PVCs:
 
@@ -161,48 +139,19 @@ Adjust storage size and storage class according to your cluster policy.
 
 ## 5. Seed Runtime Configuration in Consul KV
 
-Consul Change Logger reads non-secret runtime configuration from Consul KV under this prefix:
+Consul Change Logger reads all runtime configuration from this Consul KV key:
 
 ```text
-consul-change-logger/config
+consul-change-logger/appsettings.json
 ```
 
 Run the seed script from an environment where the `consul` CLI can reach your Consul cluster:
 
 ```sh
-export CONSUL_CONFIG_PREFIX="consul-change-logger/config"
 sh k8s/consul-config-seed.example.sh
 ```
 
-For production, review and set these values explicitly:
-
-```sh
-consul kv put consul-change-logger/config/LISTEN_PORT "8080"
-consul kv put consul-change-logger/config/CONSUL_ALLOWED_PATH_PREFIXES "/ui,/v1/kv,/v1/status,/v1/catalog,/v1/health,/v1/agent,/v1/internal"
-consul kv put consul-change-logger/config/ELASTICSEARCH_URL "https://elasticsearch.logging.svc.cluster.local:9200"
-consul kv put consul-change-logger/config/CHANGE_LOG_INDEX "consul-change-logger"
-consul kv put consul-change-logger/config/CHANGE_LOG_OUTBOX_PATH "/var/lib/consul-change-logger/outbox"
-consul kv put consul-change-logger/config/DATA_PROTECTION_PATH "/var/lib/consul-change-logger/dp-keys"
-consul kv put consul-change-logger/config/CHANGE_LOG_RETENTION_DAYS "30"
-consul kv put consul-change-logger/config/AUTH_COOKIE_SECURE "true"
-consul kv put consul-change-logger/config/AUTH_MODE "ldap"
-consul kv put consul-change-logger/config/LDAP_URL "ldaps://ldap.company.local:636"
-consul kv put consul-change-logger/config/LDAP_BIND_DN "cn=readonly,ou=service-users,dc=company,dc=local"
-consul kv put consul-change-logger/config/LDAP_BASE_DN "dc=company,dc=local"
-consul kv put consul-change-logger/config/LDAP_USER_FILTER "(mail={0})"
-consul kv put consul-change-logger/config/LDAP_GROUP_FILTER "(&(objectClass=group)(cn=consul-admins)(member={0}))"
-```
-
-Do not set these in Consul KV:
-
-```text
-LDAP_BIND_PASSWORD
-ELASTICSEARCH_USERNAME
-ELASTICSEARCH_PASSWORD
-ELASTICSEARCH_API_KEY
-```
-
-They must come from Kubernetes Secret-backed environment variables.
+Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example.json), replace its endpoint and credential values, then store the entire JSON document as the value of this key.
 
 ## 6. Add the Sidecar to the Consul Pod
 
@@ -210,50 +159,10 @@ Edit the existing Consul Deployment/StatefulSet and add the Consul Change Logger
 
 Key points:
 
-- `CONSUL_UPSTREAM_URL` should usually be `http://127.0.0.1:8500` when Consul and Consul Change Logger run in the same pod.
+- `ConsulConfiguration.UpstreamUrl` in the application `appsettings.json` should point to the Consul HTTP endpoint.
 - The sidecar listens on port `8080`.
 - The pod-level `fsGroup` should allow the non-root container user to write mounted PVCs.
-- The outbox and data-protection paths must be mounted as writable volumes.
-
-Minimal sidecar environment:
-
-```yaml
-env:
-  - name: CONSUL_UPSTREAM_URL
-    value: http://127.0.0.1:8500
-  - name: CONSUL_CONFIG_PREFIX
-    value: consul-change-logger/config
-```
-
-Secret-backed environment:
-
-```yaml
-env:
-  - name: LDAP_BIND_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: consul-change-logger-secrets
-        key: ldap-bind-password
-        optional: true
-  - name: ELASTICSEARCH_USERNAME
-    valueFrom:
-      secretKeyRef:
-        name: consul-change-logger-secrets
-        key: elasticsearch-username
-        optional: true
-  - name: ELASTICSEARCH_PASSWORD
-    valueFrom:
-      secretKeyRef:
-        name: consul-change-logger-secrets
-        key: elasticsearch-password
-        optional: true
-  - name: ELASTICSEARCH_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: consul-change-logger-secrets
-        key: elasticsearch-api-key
-        optional: true
-```
+- The outbox path must be mounted as a writable volume.
 
 Apply the Deployment/StatefulSet change:
 
@@ -340,7 +249,7 @@ If readiness fails, check:
 
 - Consul URL from the sidecar
 - Elasticsearch URL/auth/TLS
-- Kubernetes Secret values
+- Consul KV credential values
 - Consul KV config prefix
 
 ## 9. Verify Login
@@ -356,14 +265,13 @@ Expected flow:
 1. Consul Change Logger shows the login page.
 2. User enters email/password.
 3. LDAP authentication succeeds.
-4. `LDAP_GROUP_FILTER` allowlist check succeeds.
+4. `LdapConfiguration.GroupFilter` allowlist check succeeds when configured.
 5. User is redirected to the Consul web UI.
 
 If login fails:
 
-- Confirm `AUTH_MODE=ldap`.
-- Confirm `LDAP_URL`, `LDAP_BASE_DN`, `LDAP_USER_FILTER`, and `LDAP_GROUP_FILTER`.
-- Confirm `LDAP_BIND_PASSWORD` exists in Kubernetes Secret.
+- Confirm `LdapConfiguration.Domain`, ports, `SearchBase`, `SearchFilter`, and `UseSSL`.
+- Confirm `LdapConfiguration.BindCredentials` is correct when `BindDn` is configured.
 - Check sidecar logs.
 
 ```powershell
@@ -445,7 +353,7 @@ When Elasticsearch is healthy, outbox files are written and then deleted after s
 
 To test retry behavior safely in a non-production environment:
 
-1. Temporarily point `ELASTICSEARCH_URL` to an unreachable endpoint.
+1. Temporarily point `Elasticsearch.Url` to an unreachable endpoint in `consul-change-logger/appsettings.json`.
 2. Modify a KV key.
 3. Confirm a JSON file appears under:
 
@@ -453,7 +361,7 @@ To test retry behavior safely in a non-production environment:
 /var/lib/consul-change-logger/outbox/yyyy-MM-dd/
 ```
 
-4. Restore `ELASTICSEARCH_URL`.
+4. Restore `Elasticsearch.Url`.
 5. Restart the sidecar or wait for retry.
 6. Confirm the file is delivered and deleted.
 
@@ -462,14 +370,11 @@ To test retry behavior safely in a non-production environment:
 Before enabling this for all users:
 
 - Consul traffic routes through Consul Change Logger.
-- `AUTH_MODE=ldap`.
-- `AUTH_COOKIE_SECURE=true`.
-- `LDAP_GROUP_FILTER` is set.
+- `LdapConfiguration.GroupFilter` is set.
 - Consul ACLs are enabled.
 - Elasticsearch TLS/auth works.
-- Secret values are in Kubernetes Secret, not Consul KV.
+- Consul ACLs restrict read access to the configuration prefix containing credentials.
 - Outbox PVC is mounted and writable.
-- Data-protection PVC is mounted and writable.
 - Sidecar runs as non-root.
 - Root filesystem is read-only.
 - `/health/ready` returns ready.

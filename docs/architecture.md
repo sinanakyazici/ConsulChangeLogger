@@ -6,7 +6,7 @@ Consul Change Logger is an authenticated reverse proxy for Consul UI/API traffic
 flowchart LR
     browser["fa:fa-user User browser"]
     proxy["fa:fa-shield Consul Change Logger<br/>ASP.NET Core reverse proxy"]
-    auth["fa:fa-lock Login gate<br/>LDAP or mock auth"]
+    auth["fa:fa-lock Login gate<br/>LDAP authentication"]
     policy["fa:fa-filter Request policy<br/>allowed path prefixes"]
     consul["fa:fa-server Consul UI / HTTP API"]
     readcache["fa:fa-clock In-memory read cache<br/>user + client + key"]
@@ -83,11 +83,11 @@ sequenceDiagram
 
 For each KV write/delete event:
 
-1. write JSON to `CHANGE_LOG_OUTBOX_PATH`
+1. write JSON to `ChangeLog.OutboxPath`
 2. enqueue the outbox file for Elasticsearch delivery
 3. delete the outbox file only after Elasticsearch accepts it
 
-Outbox files are stored under daily directories named `yyyy-MM-dd`. If Elasticsearch is unavailable, the background worker retries from the outbox. Expired daily directories are deleted according to `CHANGE_LOG_RETENTION_DAYS`, which defaults to 30 days. For production, mount `CHANGE_LOG_OUTBOX_PATH` on persistent storage.
+Outbox files are stored under daily directories named `yyyy-MM-dd`. If Elasticsearch is unavailable, the background worker retries from the outbox. Expired daily directories are deleted according to `ChangeLog.RetentionDays`, which defaults to 30 days. For production, mount `ChangeLog.OutboxPath` on persistent storage.
 
 ```mermaid
 flowchart TD
@@ -121,15 +121,15 @@ flowchart TD
 
 ## Configuration
 
-Only bootstrap values are expected from environment variables:
+Only bootstrap values are expected from the application `appsettings.json` file:
 
-- `CONSUL_UPSTREAM_URL`
-- `CONSUL_CONFIG_PREFIX`
+- `ConsulConfiguration.UpstreamUrl`
+- `ConsulConfiguration.ConfigKey`
 
-Non-secret runtime configuration is read from Consul KV under `CONSUL_CONFIG_PREFIX`.
+Runtime configuration is read as one `appsettings.json`-style document from `ConsulConfiguration.ConfigKey`. This includes LDAP and Elasticsearch credentials.
 
-Secret values must not be stored in Consul KV. `LDAP_BIND_PASSWORD`, `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, and `ELASTICSEARCH_API_KEY` are read only from the environment.
+Because credentials are stored as plaintext KV values, Consul ACL policies must restrict read access to this key.
 
 ## Request Scope
 
-After authentication, Consul Change Logger forwards only paths matching `CONSUL_ALLOWED_PATH_PREFIXES`. `GET` and `HEAD` are allowed for those prefixes. Mutating methods are allowed only for Consul KV paths, so non-KV Consul API mutations are blocked at the proxy layer. Consul ACLs are still required in production.
+After authentication, Consul Change Logger forwards only its built-in allowed Consul UI/API paths. `GET` and `HEAD` are allowed for those paths. Mutating methods are allowed only for Consul KV paths, so non-KV Consul API mutations are blocked at the proxy layer. Consul ACLs are still required in production.

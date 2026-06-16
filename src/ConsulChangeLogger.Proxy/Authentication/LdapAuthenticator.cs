@@ -1,14 +1,15 @@
 using System.DirectoryServices.Protocols;
 using System.Net;
+using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Authentication;
 
 internal sealed class LdapAuthenticator
 {
-    private readonly AuthOptions options;
+    private readonly LdapConfiguration options;
 
-    public LdapAuthenticator(AuthOptions options)
+    public LdapAuthenticator(LdapConfiguration options)
     {
         this.options = options;
     }
@@ -25,21 +26,6 @@ internal sealed class LdapAuthenticator
 
     private bool Authenticate(string email, string password)
     {
-        if (options.Mode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        if (options.Mode.Equals("mock", StringComparison.OrdinalIgnoreCase))
-        {
-            return password == options.MockPassword;
-        }
-
-        if (!options.Mode.Equals("ldap", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
         try
         {
             var userDn = FindUserDn(email);
@@ -54,7 +40,7 @@ internal sealed class LdapAuthenticator
                 userConnection.Bind(new NetworkCredential(userDn, password));
             }
 
-            return IsUserAllowed(userDn, email);
+            return true;
         }
         catch (LdapException)
         {
@@ -66,50 +52,23 @@ internal sealed class LdapAuthenticator
     {
         using var connection = CreateConnection();
         connection.AuthType = AuthType.Basic;
-        if (!string.IsNullOrWhiteSpace(options.LdapBindDn))
+        if (!string.IsNullOrWhiteSpace(options.BindDn))
         {
-            connection.Bind(new NetworkCredential(options.LdapBindDn, options.LdapBindPassword));
+            connection.Bind(new NetworkCredential(options.BindDn, options.BindCredentials));
         }
 
-        var filter = string.Format(options.LdapUserFilter, EscapeLdapFilterValue(email));
-        var request = new SearchRequest(options.LdapBaseDn, filter, SearchScope.Subtree, "distinguishedName", "dn", "mail", "userPrincipalName");
+        var filter = string.Format(options.SearchFilter, EscapeLdapFilterValue(email));
+        var request = new SearchRequest(options.SearchBase, filter, SearchScope.Subtree, "distinguishedName", "dn", "mail", "userPrincipalName");
         var response = (SearchResponse)connection.SendRequest(request);
         return response.Entries.Count == 0 ? null : response.Entries[0].DistinguishedName;
     }
 
-    private bool IsUserAllowed(string userDn, string email)
-    {
-        if (string.IsNullOrWhiteSpace(options.LdapGroupFilter))
-        {
-            return true;
-        }
-
-        using var connection = CreateConnection();
-        connection.AuthType = AuthType.Basic;
-        if (!string.IsNullOrWhiteSpace(options.LdapBindDn))
-        {
-            connection.Bind(new NetworkCredential(options.LdapBindDn, options.LdapBindPassword));
-        }
-        else
-        {
-            Log.Warning("LDAP_GROUP_FILTER is set but LDAP_BIND_DN is not configured — group search will use anonymous bind and may fail silently.");
-        }
-
-        var filter = string.Format(
-            options.LdapGroupFilter,
-            EscapeLdapFilterValue(userDn),
-            EscapeLdapFilterValue(email));
-        var request = new SearchRequest(options.LdapBaseDn, filter, SearchScope.Subtree, "distinguishedName", "cn");
-        var response = (SearchResponse)connection.SendRequest(request);
-        return response.Entries.Count > 0;
-    }
-
     private LdapConnection CreateConnection()
     {
-        var uri = new Uri(options.LdapUrl);
-        var identifier = new LdapDirectoryIdentifier(uri.Host, uri.Port > 0 ? uri.Port : (uri.Scheme == "ldaps" ? 636 : 389));
+        var port = options.UseSSL ? options.SecurePort : options.Port;
+        var identifier = new LdapDirectoryIdentifier(options.Domain, port);
         var connection = new LdapConnection(identifier);
-        connection.SessionOptions.SecureSocketLayer = uri.Scheme.Equals("ldaps", StringComparison.OrdinalIgnoreCase);
+        connection.SessionOptions.SecureSocketLayer = options.UseSSL;
         connection.Timeout = TimeSpan.FromSeconds(10);
         return connection;
     }

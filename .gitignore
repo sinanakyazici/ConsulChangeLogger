@@ -16,6 +16,7 @@ TestResults/
 logs/
 outbox/
 data-protection/
+.local-data/
 __pycache__/
 *.pyc
 

@@ -9,7 +9,7 @@ RUN dotnet publish src/ConsulChangeLogger.Proxy/ConsulChangeLogger.Proxy.csproj 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app/publish .
-RUN mkdir -p /var/lib/consul-change-logger/outbox /var/lib/consul-change-logger/dp-keys \
+RUN mkdir -p /var/lib/consul-change-logger/outbox \
     && chown -R $APP_UID:0 /var/lib/consul-change-logger
 USER $APP_UID
 ENTRYPOINT ["dotnet", "ConsulChangeLogger.Proxy.dll"]

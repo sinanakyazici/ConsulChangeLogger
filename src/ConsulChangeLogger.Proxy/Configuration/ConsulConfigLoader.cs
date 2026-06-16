@@ -1,110 +1,86 @@
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Configuration;
 
 internal static class ConsulConfigLoader
 {
-    private static readonly string[] ForbiddenKeys =
-    [
-        "LDAP_BIND_PASSWORD",
-        "ELASTICSEARCH_USERNAME",
-        "ELASTICSEARCH_PASSWORD",
-        "ELASTICSEARCH_API_KEY"
-    ];
-
-    private static readonly string[] Keys =
-    [
-        "LISTEN_PORT",
-        "CONSUL_UPSTREAM_URL",
-        "CONSUL_ALLOWED_PATH_PREFIXES",
-        "ELASTICSEARCH_URL",
-        "CHANGE_LOG_INDEX",
-        "CHANGE_LOG_OUTBOX_PATH",
-        "DATA_PROTECTION_PATH",
-        "READ_MATCH_WINDOW_SECONDS",
-        "MAX_BODY_BYTES",
-        "CHANGE_LOG_QUEUE_CAPACITY",
-        "CHANGE_LOG_RETENTION_DAYS",
-        "ELASTICSEARCH_RETRY_DELAY_SECONDS",
-        "AUTH_COOKIE_SECURE",
-        "AUTH_MODE",
-        "AUTH_MOCK_PASSWORD",
-        "LDAP_URL",
-        "LDAP_BIND_DN",
-        "LDAP_BASE_DN",
-        "LDAP_USER_FILTER",
-        "LDAP_GROUP_FILTER"
-    ];
-
-    public static async Task<IReadOnlyDictionary<string, string>> LoadAsync(BootstrapOptions bootstrapOptions, CancellationToken cancellationToken)
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        var config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    public static async Task<RuntimeConfiguration> LoadAsync(BootstrapOptions bootstrapOptions, CancellationToken cancellationToken)
+    {
         using var httpClient = new HttpClient
         {
             BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl),
             Timeout = TimeSpan.FromSeconds(10)
         };
 
-        foreach (var key in Keys)
+        var path = EscapeKvPath(bootstrapOptions.ConfigKey);
+        var deadline = DateTimeOffset.UtcNow.Add(StartupTimeout);
+        Exception? lastError = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
         {
-            var path = BuildConsulKvPath(bootstrapOptions.ConfigPrefix, key);
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 using var response = await httpClient.GetAsync($"/v1/kv/{path}?raw", cancellationToken);
                 if (response.StatusCode == HttpStatusCode.NotFound)
                 {
-                    continue;
+                    lastError = new InvalidOperationException(
+                        $"Consul configuration key '{bootstrapOptions.ConfigKey}' was not found.");
                 }
-
-                response.EnsureSuccessStatusCode();
-                var value = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
-                config[key] = value;
-            }
-            catch (HttpRequestException error)
-            {
-                Log.Warning(error, "Failed to read config key {ConfigKey} from Consul", key);
-            }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                Log.Warning("Failed to read config key {ConfigKey} from Consul: timeout", key);
-            }
-        }
-
-        await WarnIfForbiddenKeysExistAsync(httpClient, bootstrapOptions.ConfigPrefix, cancellationToken);
-
-        return config;
-    }
-
-    private static async Task WarnIfForbiddenKeysExistAsync(HttpClient httpClient, string prefix, CancellationToken cancellationToken)
-    {
-        foreach (var key in ForbiddenKeys)
-        {
-            var path = BuildConsulKvPath(prefix, key);
-            try
-            {
-                using var response = await httpClient.GetAsync($"/v1/kv/{path}", cancellationToken);
-                if (response.StatusCode == HttpStatusCode.NotFound)
+                else
                 {
-                    continue;
+                    response.EnsureSuccessStatusCode();
+                    var json = await response.Content.ReadAsStringAsync(cancellationToken);
+                    return Parse(json);
                 }
-
-                Log.Warning("Secret-like config key {ConfigKey} exists in Consul KV and will be ignored; move it to a Kubernetes Secret/env var", key);
+            }
+            catch (JsonException error)
+            {
+                throw new InvalidOperationException(
+                    $"Consul configuration key '{bootstrapOptions.ConfigKey}' contains invalid JSON.", error);
             }
             catch (HttpRequestException error)
             {
-                Log.Warning(error, "Failed to check forbidden config key {ConfigKey} in Consul", key);
+                lastError = error;
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                Log.Warning("Failed to check forbidden config key {ConfigKey} in Consul: timeout", key);
+                lastError = new TimeoutException(
+                    $"Timed out while reading Consul configuration key '{bootstrapOptions.ConfigKey}'.");
             }
+
+            Log.Warning(lastError,
+                "Consul configuration is not ready; retrying key {ConfigKey} in {RetryDelaySeconds} seconds",
+                bootstrapOptions.ConfigKey,
+                RetryDelay.TotalSeconds);
+            await Task.Delay(RetryDelay, cancellationToken);
         }
+
+        throw new TimeoutException(
+            $"Consul configuration key '{bootstrapOptions.ConfigKey}' was not available within {StartupTimeout.TotalSeconds:0} seconds.",
+            lastError);
     }
 
-    private static string BuildConsulKvPath(string prefix, string key)
+    internal static RuntimeConfiguration Parse(string json)
     {
-        var fullPath = $"{prefix.TrimEnd('/')}/{key}";
-        return string.Join("/", fullPath.Split('/').Select(Uri.EscapeDataString));
+        var config = JsonSerializer.Deserialize<RuntimeConfiguration>(json, JsonOptions);
+        return config ?? throw new JsonException("The configuration root must be a JSON object.");
     }
+
+    private static string EscapeKvPath(string key) =>
+        string.Join("/", key.Trim('/').Split('/').Select(Uri.EscapeDataString));
 }

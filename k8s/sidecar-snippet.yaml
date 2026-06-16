@@ -17,43 +17,12 @@ containers:
       capabilities:
         drop:
           - ALL
-    env:
-      - name: CONSUL_UPSTREAM_URL
-        value: http://127.0.0.1:8500
-      - name: CONSUL_CONFIG_PREFIX
-        value: consul-change-logger/config
-      - name: LDAP_BIND_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: consul-change-logger-secrets
-            key: ldap-bind-password
-            optional: true
-      - name: ELASTICSEARCH_USERNAME
-        valueFrom:
-          secretKeyRef:
-            name: consul-change-logger-secrets
-            key: elasticsearch-username
-            optional: true
-      - name: ELASTICSEARCH_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: consul-change-logger-secrets
-            key: elasticsearch-password
-            optional: true
-      - name: ELASTICSEARCH_API_KEY
-        valueFrom:
-          secretKeyRef:
-            name: consul-change-logger-secrets
-            key: elasticsearch-api-key
-            optional: true
     ports:
       - name: logger-http
         containerPort: 8080
     volumeMounts:
       - name: change-log-outbox
         mountPath: /var/lib/consul-change-logger/outbox
-      - name: change-logger-dp-keys
-        mountPath: /var/lib/consul-change-logger/dp-keys
     readinessProbe:
       httpGet:
         path: /health/ready
@@ -61,11 +30,17 @@ containers:
       initialDelaySeconds: 10
       periodSeconds: 10
       timeoutSeconds: 3
+    startupProbe:
+      httpGet:
+        path: /health/live
+        port: logger-http
+      periodSeconds: 2
+      timeoutSeconds: 2
+      failureThreshold: 75
     livenessProbe:
       httpGet:
         path: /health/live
         port: logger-http
-      initialDelaySeconds: 10
       periodSeconds: 30
       timeoutSeconds: 3
     resources:
@@ -80,6 +55,3 @@ volumes:
   - name: change-log-outbox
     persistentVolumeClaim:
       claimName: consul-change-logger-outbox
-  - name: change-logger-dp-keys
-    persistentVolumeClaim:
-      claimName: consul-change-logger-dp-keys

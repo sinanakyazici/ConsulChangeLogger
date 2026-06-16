@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy.Configuration;
 
 namespace ConsulChangeLogger.Proxy.ChangeLogging;
 
@@ -7,9 +8,9 @@ internal sealed class ChangeRecordQueue
 {
     private readonly Channel<string> channel;
 
-    public ChangeRecordQueue(ChangeLoggerOptions options)
+    public ChangeRecordQueue(ChangeLogConfiguration options)
     {
-        channel = Channel.CreateBounded<string>(new BoundedChannelOptions(options.ChangeRecordQueueCapacity)
+        channel = Channel.CreateBounded<string>(new BoundedChannelOptions(options.QueueCapacity)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,

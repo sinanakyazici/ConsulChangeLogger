@@ -20,20 +20,17 @@ internal sealed class ConsulProxy
     };
 
     private readonly HttpContext context;
-    private readonly ChangeLoggerOptions options;
     private readonly IHttpClientFactory httpClientFactory;
     private readonly ReadCache readCache;
     private readonly ChangeRecordSink changeRecordSink;
 
     public ConsulProxy(
         HttpContext context,
-        ChangeLoggerOptions options,
         IHttpClientFactory httpClientFactory,
         ReadCache readCache,
         ChangeRecordSink changeRecordSink)
     {
         this.context = context;
-        this.options = options;
         this.httpClientFactory = httpClientFactory;
         this.readCache = readCache;
         this.changeRecordSink = changeRecordSink;
@@ -42,7 +39,7 @@ internal sealed class ConsulProxy
     public async Task HandleAsync()
     {
         var requestBodyBytes = await ReadRequestBodyAsync();
-        var requestBody = ConsulKvChangeHelpers.Truncate(Encoding.UTF8.GetString(requestBodyBytes), options.MaxBodyBytes);
+        var requestBody = Encoding.UTF8.GetString(requestBodyBytes);
         using var upstreamRequest = BuildUpstreamRequest(requestBodyBytes);
         using var upstreamResponse = await httpClientFactory
             .CreateClient("consul")
@@ -140,7 +137,7 @@ internal sealed class ConsulProxy
         var userEmail = context.User.FindFirstValue(ClaimTypes.Email) ?? context.User.Identity?.Name;
         var userAgent = context.Request.Headers.UserAgent.ToString();
         var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
-        var responseBody = ConsulKvChangeHelpers.Truncate(Encoding.UTF8.GetString(responseBodyBytes), options.MaxBodyBytes);
+        var responseBody = Encoding.UTF8.GetString(responseBodyBytes);
         var responseCode = (int)upstreamResponse.StatusCode;
 
         if (action == "kv_read" && ConsulKvChangeHelpers.IsSuccess(responseCode))

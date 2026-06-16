@@ -1,7 +1,4 @@
-using System.Security.Claims;
 using ConsulChangeLogger.Core;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 
 namespace ConsulChangeLogger.Proxy.Authentication;
 
@@ -17,18 +14,18 @@ internal static class AuthenticationEndpoints
                 return;
             }
 
-            var options = app.Services.GetRequiredService<ChangeLoggerOptions>();
-            await LoginPage.WriteAsync(context, LoginCsrfToken.Issue(context, options));
+            var tokens = app.Services.GetRequiredService<LoginCsrfTokenStore>();
+            await LoginPage.WriteAsync(context, tokens.Issue());
         });
 
         app.MapPost("/login", async context =>
         {
             var form = await context.Request.ReadFormAsync();
-            if (!LoginCsrfToken.IsValid(context, form["csrf_token"].ToString()))
+            var tokens = app.Services.GetRequiredService<LoginCsrfTokenStore>();
+            if (!tokens.Consume(form["csrf_token"].ToString()))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                var options = app.Services.GetRequiredService<ChangeLoggerOptions>();
-                await LoginPage.WriteAsync(context, LoginCsrfToken.Issue(context, options), "Login form expired. Please try again.");
+                await LoginPage.WriteAsync(context, tokens.Issue(), "Login form expired. Please try again.");
                 return;
             }
 
@@ -38,26 +35,33 @@ internal static class AuthenticationEndpoints
 
             if (await authenticator.AuthenticateAsync(email, password, context.RequestAborted))
             {
-                var claims = new[]
+                var sessions = app.Services.GetRequiredService<UserSessionStore>();
+                var session = sessions.Create(email);
+                context.Response.Cookies.Append(UserSessionStore.CookieName, session.Id, new CookieOptions
                 {
-                    new Claim(ClaimTypes.Name, email),
-                    new Claim(ClaimTypes.Email, email)
-                };
-                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-                await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+                    HttpOnly = true,
+                    IsEssential = true,
+                    SameSite = SameSiteMode.Lax,
+                    Secure = context.Request.IsHttps
+                });
                 context.Response.Redirect("/ui/");
                 return;
             }
 
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            var changeLoggerOptions = app.Services.GetRequiredService<ChangeLoggerOptions>();
-            await LoginPage.WriteAsync(context, LoginCsrfToken.Issue(context, changeLoggerOptions), "Email veya password hatali.");
+            await LoginPage.WriteAsync(context, tokens.Issue(), "Email veya password hatali.");
         });
 
-        app.MapPost("/logout", async context =>
+        app.MapPost("/logout", context =>
         {
-            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            if (context.Request.Cookies.TryGetValue(UserSessionStore.CookieName, out var sessionId))
+            {
+                app.Services.GetRequiredService<UserSessionStore>().Remove(sessionId);
+            }
+
+            context.Response.Cookies.Delete(UserSessionStore.CookieName);
             context.Response.Redirect("/login");
+            return Task.CompletedTask;
         });
 
         return app;

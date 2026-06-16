@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.ChangeLogging;
@@ -16,16 +17,19 @@ internal sealed class ChangeRecordSink
     };
 
     private readonly IHttpClientFactory httpClientFactory;
-    private readonly ChangeLoggerOptions options;
+    private readonly ChangeLogConfiguration options;
+    private readonly ElasticsearchConfiguration elasticsearchConfiguration;
     private readonly ChangeRecordQueue changeRecordQueue;
 
     public ChangeRecordSink(
         IHttpClientFactory httpClientFactory,
-        ChangeLoggerOptions options,
+        ChangeLogConfiguration options,
+        ElasticsearchConfiguration elasticsearchConfiguration,
         ChangeRecordQueue changeRecordQueue)
     {
         this.httpClientFactory = httpClientFactory;
         this.options = options;
+        this.elasticsearchConfiguration = elasticsearchConfiguration;
         this.changeRecordQueue = changeRecordQueue;
     }
 
@@ -41,8 +45,9 @@ internal sealed class ChangeRecordSink
                     return;
                 }
             }
-            catch (HttpRequestException)
-            {
+            catch (HttpRequestException ex)
+            {                              
+                Log.Error(ex, "Failed to connect to Elasticsearch");
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -82,7 +87,7 @@ internal sealed class ChangeRecordSink
         using var content = JsonContent(mapping);
         using var response = await httpClientFactory
             .CreateClient("elasticsearch")
-            .PutAsync($"/{options.ChangeRecordIndex}", content, cancellationToken);
+            .PutAsync($"/{elasticsearchConfiguration.Index}", content, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -113,12 +118,12 @@ internal sealed class ChangeRecordSink
     {
         var eventJson = JsonSerializer.Serialize(changeRecord, JsonOptions);
         ChangeRecordOutbox.DeleteExpiredDailyDirectories(
-            options.ChangeRecordOutboxPath,
-            options.ChangeRecordRetentionDays,
+            options.OutboxPath,
+            elasticsearchConfiguration.RetryDelaySeconds,
             DateTimeOffset.UtcNow);
 
         var outboxPath = ChangeRecordOutbox.BuildPath(
-            options.ChangeRecordOutboxPath,
+            options.OutboxPath,
             changeRecord.EventId,
             ReadTimestamp(changeRecord.Timestamp));
 

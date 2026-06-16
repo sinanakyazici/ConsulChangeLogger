@@ -1,7 +1,8 @@
+using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy.Configuration;
+using Serilog;
 using System.Text;
 using System.Text.Json;
-using ConsulChangeLogger.Core;
-using Serilog;
 
 namespace ConsulChangeLogger.Proxy.ChangeLogging;
 
@@ -15,24 +16,26 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
 
     private readonly ChangeRecordQueue changeRecordQueue;
     private readonly IHttpClientFactory httpClientFactory;
-    private readonly ChangeLoggerOptions options;
+    private readonly ChangeLogConfiguration options;
+    private readonly ElasticsearchConfiguration elasticsearchConfiguration;
 
-    public ChangeRecordDispatchWorker(ChangeRecordQueue changeRecordQueue, IHttpClientFactory httpClientFactory, ChangeLoggerOptions options)
+    public ChangeRecordDispatchWorker(ChangeRecordQueue changeRecordQueue, IHttpClientFactory httpClientFactory, ChangeLogConfiguration options, ElasticsearchConfiguration elasticsearchConfiguration)
     {
         this.changeRecordQueue = changeRecordQueue;
         this.httpClientFactory = httpClientFactory;
         this.options = options;
+        this.elasticsearchConfiguration = elasticsearchConfiguration;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Directory.CreateDirectory(options.ChangeRecordOutboxPath);
+        Directory.CreateDirectory(options.OutboxPath);
         ChangeRecordOutbox.DeleteExpiredDailyDirectories(
-            options.ChangeRecordOutboxPath,
-            options.ChangeRecordRetentionDays,
+            options.OutboxPath,
+            options.RetentionDays,
             DateTimeOffset.UtcNow);
 
-        foreach (var path in ChangeRecordOutbox.EnumeratePendingFiles(options.ChangeRecordOutboxPath))
+        foreach (var path in ChangeRecordOutbox.EnumeratePendingFiles(options.OutboxPath))
         {
             await changeRecordQueue.EnqueueAsync(path, stoppingToken);
         }
@@ -69,7 +72,7 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
                 using var content = new StringContent(eventJson, Encoding.UTF8, "application/json");
                 using var response = await httpClientFactory
                     .CreateClient("elasticsearch")
-                    .PutAsync($"/{options.ChangeRecordIndex}/_doc/{Uri.EscapeDataString(documentId)}", content, cancellationToken);
+                    .PutAsync($"/{elasticsearchConfiguration.Index}/_doc/{Uri.EscapeDataString(documentId)}", content, cancellationToken);
                 response.EnsureSuccessStatusCode();
                 File.Delete(outboxPath);
                 DeleteParentDirectoryIfEmpty(outboxPath);
@@ -84,7 +87,7 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
                 Log.Warning("Failed to send change record to Elasticsearch: timeout");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(options.ElasticsearchRetryDelaySeconds), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(elasticsearchConfiguration.RetryDelaySeconds), cancellationToken);
         }
     }
 

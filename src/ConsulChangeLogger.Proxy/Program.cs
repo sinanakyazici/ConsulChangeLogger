@@ -1,13 +1,14 @@
 using ConsulChangeLogger.Core;
-using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Authentication;
+using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Configuration;
-using ConsulChangeLogger.Proxy.DependencyInjection;
 using ConsulChangeLogger.Proxy.Health;
 using ConsulChangeLogger.Proxy.Proxying;
 using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 using Serilog.Events;
+using System.Net.Http.Headers;
+using System.Text;
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Information()
@@ -16,12 +17,9 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();
 
-var bootstrapOptions = BootstrapOptions.FromEnvironment();
-var consulConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, CancellationToken.None);
-var options = ChangeLoggerOptions.FromConfiguration(consulConfig);
-var authOptions = AuthOptions.FromConfiguration(consulConfig);
-var listenPort = ConfigValue.ReadString(consulConfig, "LISTEN_PORT", Environment.GetEnvironmentVariable("LISTEN_PORT") ?? "8080");
 var builder = WebApplication.CreateBuilder(args);
+var bootstrapOptions = BootstrapOptions.FromConfiguration(builder.Configuration);
+var runtimeConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, CancellationToken.None);
 
 builder.Host.UseSerilog((_, loggerConfiguration) =>
 {
@@ -32,24 +30,43 @@ builder.Host.UseSerilog((_, loggerConfiguration) =>
         .WriteTo.Console();
 });
 
-if (authOptions.Mode.Equals("disabled", StringComparison.OrdinalIgnoreCase))
-{
-    Log.Warning("AUTH_MODE is 'disabled' — all requests are accepted without authentication. Set AUTH_MODE=ldap for production.");
-}
+builder.Services.AddSingleton(runtimeConfig.Elasticsearch);
+builder.Services.AddSingleton(runtimeConfig.ChangeLog);
+builder.Services.AddSingleton(runtimeConfig.LdapConfiguration);
 
-if (authOptions.Mode.Equals("mock", StringComparison.OrdinalIgnoreCase) &&
-    authOptions.MockPassword == "Passw0rd!")
-{
-    Log.Warning("AUTH_MOCK_PASSWORD is using the default value. Set AUTH_MOCK_PASSWORD to a strong secret.");
-}
+builder.Services.AddSingleton<LdapAuthenticator>();
+builder.Services.AddSingleton<LoginCsrfTokenStore>();
+builder.Services.AddSingleton<UserSessionStore>();
+builder.Services.AddSingleton(new ReadCache(TimeSpan.FromSeconds(runtimeConfig.ChangeLog.ReadMatchWindowSeconds)));
+builder.Services.AddSingleton<ChangeRecordQueue>();
+builder.Services.AddSingleton<ChangeRecordSink>();
+builder.Services.AddHostedService<ChangeRecordDispatchWorker>();
 
-builder.WebHost.UseUrls($"http://0.0.0.0:{listenPort}");
-builder.Services.AddConsulChangeLoggerServices(options, authOptions);
+builder.Services.AddHttpClient("consul", client =>
+{
+    client.BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
+var elasticsearchClient = builder.Services.AddHttpClient("elasticsearch", client =>
+{
+    client.BaseAddress = new Uri(runtimeConfig.Elasticsearch.Url!);
+    client.Timeout = TimeSpan.FromSeconds(10);
+    var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{runtimeConfig.Elasticsearch.Username}:{runtimeConfig.Elasticsearch.Password}"));
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
+});
+
+if (runtimeConfig.Elasticsearch.SkipCertificateValidation)
+{
+    elasticsearchClient.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+    });
+}
 
 var app = builder.Build();
 app.UseMiddleware<SecurityHeadersMiddleware>();
-app.UseAuthentication();
-app.UseAuthorization();
+app.UseMiddleware<UserSessionMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
@@ -60,17 +77,28 @@ using (var scope = app.Services.CreateScope())
 
 app.MapHealthEndpoints();
 app.MapAuthenticationEndpoints();
-app.MapConsulProxyEndpoint(options);
+app.Map("/{**path}", async context =>
+{
+    if (context.User.Identity?.IsAuthenticated != true)
+    {
+        context.Response.Redirect("/login");
+        return;
+    }
 
-try
-{
-    Log.Information("Consul Change Logger listening on port {ListenPort}, upstream {ConsulUpstreamUrl}, config prefix {ConfigPrefix}",
-        listenPort,
-        options.ConsulUpstreamUrl,
-        bootstrapOptions.ConfigPrefix);
-    await app.RunAsync();
-}
-finally
-{
-    await Log.CloseAndFlushAsync();
-}
+    if (context.Request.Path == "/")
+    {
+        context.Response.Redirect("/ui/");
+        return;
+    }
+
+    var proxy = new ConsulProxy(
+        context,
+        app.Services.GetRequiredService<IHttpClientFactory>(),
+        app.Services.GetRequiredService<ReadCache>(),
+        app.Services.GetRequiredService<ChangeRecordSink>());
+
+    await proxy.HandleAsync();
+});
+
+
+await app.RunAsync();

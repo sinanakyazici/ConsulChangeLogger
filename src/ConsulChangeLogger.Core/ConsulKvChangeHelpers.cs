@@ -7,16 +7,6 @@ public static class ConsulKvChangeHelpers
 {
     public static bool IsSuccess(int statusCode) => statusCode is >= 200 and < 300;
 
-    public static string Truncate(string? value, int maxBodyBytes)
-    {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        return value.Length <= maxBodyBytes ? value : value[..maxBodyBytes] + "...[truncated]";
-    }
-
     public static string PathWithoutQuery(string path)
     {
         var index = path.IndexOf('?', StringComparison.Ordinal);
