@@ -99,7 +99,7 @@ Single-pod operation keeps `old_value` matching deterministic because the read c
 Install the chart from GHCR OCI:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.1 -n <consul-namespace>
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n <consul-namespace>
 ```
 
 This chart intentionally creates only the product-owned PVC and prints the patch steps in `NOTES.txt`.

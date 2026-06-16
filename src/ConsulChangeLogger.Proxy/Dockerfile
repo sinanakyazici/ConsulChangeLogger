@@ -10,8 +10,10 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-        libldap-2.5-0 \
+        libldap2 \
         libsasl2-2 \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libldap.so.2 /usr/lib/x86_64-linux-gnu/libldap-2.5.so.0 \
+    && ln -sf /lib/x86_64-linux-gnu/libldap.so.2 /lib/x86_64-linux-gnu/libldap-2.5.so.0 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
 RUN mkdir -p /var/lib/consul-change-logger/outbox \
