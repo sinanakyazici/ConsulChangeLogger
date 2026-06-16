@@ -1,135 +1,279 @@
 # Architecture
 
-Consul Change Logger is an authenticated reverse proxy for Consul UI/API traffic. It records Consul KV write/delete events with user identity and best-effort old/new values.
+Consul Change Logger is an authenticated reverse proxy with an audit pipeline behind it. Its job is to sit in front of Consul UI and the Consul HTTP API, authenticate the user, forward the request to Consul, observe KV traffic, and persist normalized change records into Elasticsearch.
+
+This document describes the current implementation, not a generic future design.
+
+## High-Level View
 
 ```mermaid
 flowchart LR
-    browser["fa:fa-user User browser"]
-    proxy["fa:fa-shield Consul Change Logger<br/>ASP.NET Core reverse proxy"]
-    auth["fa:fa-lock Login gate<br/>LDAP authentication"]
-    policy["fa:fa-filter Request policy<br/>allowed path prefixes"]
-    consul["fa:fa-server Consul UI / HTTP API"]
-    readcache["fa:fa-clock In-memory read cache<br/>user + client + key"]
-    outbox["fa:fa-folder-open Daily outbox<br/>yyyy-MM-dd/*.json"]
-    dispatcher["fa:fa-rotate Background dispatcher<br/>retry + retention cleanup"]
-    elastic["fa:fa-database Elasticsearch index<br/>consul-change-logger"]
-    kibana["fa:fa-chart-line Kibana Discover / dashboards"]
+    browser["Browser"]
+    proxy["Consul Change Logger<br/>ASP.NET Core reverse proxy"]
+    ldap["LDAP / Active Directory"]
+    consul["Consul UI + Consul HTTP API"]
+    cache["In-memory read cache"]
+    outbox["Outbox files<br/>yyyy-MM-dd/*.json"]
+    worker["Background dispatch worker"]
+    elastic["Elasticsearch<br/>consul-change-logger"]
+    kibana["Kibana"]
 
-    browser --> proxy
-    proxy --> auth
-    proxy --> policy
-    policy --> consul
-    proxy --> readcache
-    proxy --> outbox
-    outbox --> dispatcher
-    dispatcher --> elastic
+    browser -->|login and UI/API traffic| proxy
+    proxy -->|direct bind| ldap
+    proxy -->|allowed requests only| consul
+    consul -->|responses| proxy
+    proxy -->|store successful reads| cache
+    proxy -->|persist write/delete audit records| outbox
+    outbox -->|enqueue| worker
+    worker -->|retry until success| elastic
     elastic --> kibana
-
-    classDef userNode fill:#E8F3FF,stroke:#3B82F6,color:#0F172A,stroke-width:1.5px
-    classDef proxyNode fill:#FFF7ED,stroke:#F97316,color:#111827,stroke-width:2px
-    classDef securityNode fill:#ECFDF5,stroke:#10B981,color:#064E3B,stroke-width:1.5px
-    classDef consulNode fill:#EEF2FF,stroke:#6366F1,color:#1E1B4B,stroke-width:1.5px
-    classDef storageNode fill:#FEFCE8,stroke:#CA8A04,color:#422006,stroke-width:1.5px
-    classDef observeNode fill:#FDF2F8,stroke:#DB2777,color:#500724,stroke-width:1.5px
-
-    class browser userNode
-    class proxy proxyNode
-    class auth,policy securityNode
-    class consul consulNode
-    class readcache,outbox,dispatcher storageNode
-    class elastic,kibana observeNode
 ```
 
-## Projects
+## Request Path
 
-- `src/ConsulChangeLogger.Proxy`: ASP.NET Core app, login flow, Consul forwarding, change record delivery.
-- `src/ConsulChangeLogger.Core`: shared models and KV parsing helpers.
-- `tests/ConsulChangeLogger.Tests`: lightweight executable test runner for parsing edge cases.
+### 1. Authentication
 
-## Old Value Capture
+The login form is served by the proxy itself.
 
-Consul Change Logger does not read Consul state before every write. It captures `old_value` from the latest successful KV read by the same user/client/key identity while the process is running.
+Flow:
 
-This matches the Consul UI workflow where users read a KV value before changing it. If writes happen without a prior read through Consul Change Logger, `old_value` can be `null`.
+1. browser requests `/login`
+2. proxy renders login page with CSRF token
+3. browser posts username and password
+4. proxy performs direct LDAP bind using the submitted identity
+5. if bind succeeds, the proxy creates an in-memory session and sets an opaque cookie
+6. browser is redirected to `/ui/`
+
+Important properties:
+
+- login uses direct bind
+- the submitted username is used as the LDAP bind identity
+- the session store is in memory
+- the browser cookie stores only the session id
+
+### 2. Consul UI and API forwarding
+
+After authentication:
+
+- requests to `/ui/*` are forwarded to Consul UI
+- requests to `/v1/*` are forwarded to the Consul HTTP API
+
+The proxy copies request headers, body, and method, then writes the upstream response back to the browser.
+
+Non-mutating UI/API traffic passes through as normal. KV mutation traffic is additionally observed by the audit pipeline.
+
+### 3. Client-side JSON warning
+
+When the Consul UI HTML shell is returned, the proxy injects a small JavaScript file into the HTML response.
+
+That script:
+
+- intercepts `fetch` and `XMLHttpRequest`
+- watches `PUT /v1/kv/...` requests
+- checks whether the body looks like JSON
+- if it looks like JSON but is invalid, shows a browser confirmation dialog
+
+This is only a UI guard. The server still allows the request if the user confirms.
+
+## Audit Pipeline
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User as User browser
+    participant User as Browser
     participant Proxy as Consul Change Logger
     participant Consul as Consul
-    participant Cache as Read cache
-    participant Outbox as Daily outbox
+    participant Cache as Read Cache
+    participant Outbox as Outbox
+    participant Worker as Dispatch Worker
     participant ES as Elasticsearch
 
     User->>Proxy: GET /v1/kv/app/key?raw
-    Proxy->>Consul: Forward read request
-    Consul-->>Proxy: Current KV value
-    Proxy->>Cache: Store old_value by user/client/key
-    Proxy-->>User: Return current value
+    Proxy->>Consul: Forward GET
+    Consul-->>Proxy: Current value
+    Proxy->>Cache: Store value by user + client + key
+    Proxy-->>User: Return response
 
     User->>Proxy: PUT /v1/kv/app/key
-    Proxy->>Consul: Forward write request
+    Proxy->>Consul: Forward PUT
     Consul-->>Proxy: Write result
-    Proxy->>Cache: Lookup old_value
-    Proxy->>Outbox: Write change record JSON
-    Outbox->>ES: Deliver with retry
-    ES-->>Outbox: Accepted
-    Outbox->>Outbox: Delete delivered file
+    Proxy->>Cache: Lookup previous read
+    Proxy->>Proxy: Build ChangeRecord
+    Proxy->>Outbox: Write JSON file
+    Proxy->>Worker: Enqueue file path
+    Worker->>ES: PUT document
+    ES-->>Worker: 2xx accepted
+    Worker->>Outbox: Delete delivered file
     Proxy-->>User: Return write result
 ```
 
-## Delivery Guarantees
+### Read cache
 
-For each KV write/delete event:
+`old_value` is best-effort.
 
-1. write JSON to `ChangeLog.OutboxPath`
-2. enqueue the outbox file for Elasticsearch delivery
-3. delete the outbox file only after Elasticsearch accepts it
+The proxy does not fetch Consul state before every write. Instead, it caches the latest successful KV read using this identity model:
 
-Outbox files are stored under daily directories named `yyyy-MM-dd`. If Elasticsearch is unavailable, the background worker retries from the outbox. Expired daily directories are deleted according to `ChangeLog.RetentionDays`, which defaults to 30 days. For production, mount `ChangeLog.OutboxPath` on persistent storage.
+- authenticated username
+- client IP
+- user agent
+- KV key
+
+If the same identity later performs a write or delete for the same key, the cached read becomes `old_value`.
+
+This means:
+
+- if there is no prior read, `old_value` can be `null`
+- if the process restarts, `old_value` can be `null`
+- if traffic is split across replicas without shared state, `old_value` can be `null`
+
+### ChangeRecord structure
+
+Current fields include:
+
+- event metadata:
+  `@timestamp`, `event_id`, `request_id`, `action`, `source`, `source_path`
+- KV metadata:
+  `kv_key`, `old_value`, `new_value`, `delete_confirmed`
+- response metadata:
+  `success`, `response_code`
+- user context:
+  `user_email`, `client_ip`, `user_agent`
+- old value tracking:
+  `old_value_seen_at`, `old_value_read_request_id`
+- JSON validation metadata:
+  `old_value_looks_like_json`, `old_value_is_valid_json`, `old_value_json_error`, `old_value_json_validation_status`
+  `new_value_looks_like_json`, `new_value_is_valid_json`, `new_value_json_error`, `new_value_json_validation_status`
+
+### JSON validation semantics
+
+The proxy never rewrites or blocks the KV payload on the server side.
+
+Validation is informational:
+
+- `not_json`
+- `valid_json`
+- `invalid_json`
+
+Current detection rule:
+
+- if a value starts with `{` or `[` after trimming leading whitespace, it is treated as JSON-like
+- JSON-like values are parsed
+- successful parse -> `valid_json`
+- failed parse -> `invalid_json`
+- everything else -> `not_json`
+
+This means JSON primitives such as `true`, `123`, or `"text"` are currently classified as `not_json`, not `valid_json`.
+
+## Outbox and Delivery
 
 ```mermaid
 flowchart TD
-    change["fa:fa-pen KV write/delete observed"]
-    json["fa:fa-file-code Create change record JSON"]
-    daily["fa:fa-folder-open Write to daily outbox folder"]
-    send["fa:fa-paper-plane Send to Elasticsearch"]
+    event["KV write/delete detected"]
+    record["Build ChangeRecord JSON"]
+    persist["Write file to outbox"]
+    queue["Queue outbox path"]
+    dispatch["Send document to Elasticsearch"]
     accepted{"Accepted?"}
-    delete["fa:fa-check Delete delivered file"]
-    keep["fa:fa-box-archive Keep file in outbox"]
-    retry["fa:fa-rotate Retry after delay"]
-    retention["fa:fa-calendar-days Delete expired daily folders<br/>default: 30 days"]
+    retry["Wait and retry"]
+    remove["Delete outbox file"]
+    cleanup["Delete expired daily folders"]
 
-    change --> json --> daily --> send --> accepted
-    accepted -->|yes| delete
-    accepted -->|no| keep --> retry --> send
-    daily --> retention
-
-    classDef eventNode fill:#FFF7ED,stroke:#F97316,color:#111827,stroke-width:2px
-    classDef storageNode fill:#FEFCE8,stroke:#CA8A04,color:#422006,stroke-width:1.5px
-    classDef decisionNode fill:#E0F2FE,stroke:#0284C7,color:#0C4A6E,stroke-width:1.5px
-    classDef successNode fill:#ECFDF5,stroke:#10B981,color:#064E3B,stroke-width:1.5px
-    classDef retryNode fill:#FDF2F8,stroke:#DB2777,color:#500724,stroke-width:1.5px
-
-    class change,json eventNode
-    class daily,keep,retention storageNode
-    class accepted decisionNode
-    class send,delete successNode
-    class retry retryNode
+    event --> record --> persist --> queue --> dispatch --> accepted
+    accepted -->|yes| remove
+    accepted -->|no| retry --> dispatch
+    persist --> cleanup
 ```
 
-## Configuration
+Delivery rules:
 
-Only bootstrap values are expected from the application `appsettings.json` file:
+1. write record JSON to outbox first
+2. enqueue file path
+3. worker dispatches to Elasticsearch
+4. only after Elasticsearch accepts the document is the file deleted
+5. if Elasticsearch is unavailable, the file stays in outbox and is retried
+
+At startup, the worker scans the outbox and re-queues any leftover files.
+
+## Elasticsearch Integration
+
+Current index name:
+
+```text
+consul-change-logger
+```
+
+Startup behavior:
+
+1. wait until Elasticsearch root endpoint is reachable
+2. create the index if needed
+3. update the mapping with the expected fields
+
+Delivery model:
+
+- one `ChangeRecord` becomes one Elasticsearch document
+- document id uses `event_id` if present, otherwise `request_id`
+- retries continue with the configured delay
+
+## Logging Model
+
+The proxy currently runs with verbose console logging enabled.
+
+It logs:
+
+- application startup
+- LDAP bind attempts and results
+- HTTP request summaries
+- proxied upstream response details
+- KV read cache hits
+- audit record creation
+- outbox persistence
+- queue and dispatch lifecycle
+- Elasticsearch health and index setup
+- invalid JSON detection
+- request cancellation and client disconnect behavior
+
+## Runtime Configuration
+
+The application reads only bootstrap values from local `appsettings.json`:
 
 - `ConsulConfiguration.UpstreamUrl`
 - `ConsulConfiguration.ConfigKey`
 
-Runtime configuration is read as one `appsettings.json`-style document from `ConsulConfiguration.ConfigKey`. This includes LDAP and Elasticsearch credentials.
+All runtime settings come from the Consul KV JSON document referenced by `ConfigKey`.
 
-Because credentials are stored as plaintext KV values, Consul ACL policies must restrict read access to this key.
+This includes:
 
-## Request Scope
+- Elasticsearch settings
+- outbox settings
+- LDAP settings
 
-After authentication, Consul Change Logger forwards only its built-in allowed Consul UI/API paths. `GET` and `HEAD` are allowed for those paths. Mutating methods are allowed only for Consul KV paths, so non-KV Consul API mutations are blocked at the proxy layer. Consul ACLs are still required in production.
+Because these values can contain plaintext credentials, Consul ACL policies must restrict access to the configuration key.
+
+## Local AD Lab
+
+This repository includes a local Samba-based AD lab under `k8s/`:
+
+- `k8s/samba-ad.yaml`
+- `k8s/samba-ad-ui.yaml`
+
+This lab is for development and verification:
+
+- direct LDAP bind testing
+- AD-style `SearchBase`
+- seeded service account
+- seeded test user
+- phpLDAPadmin access
+
+Current seeded identities:
+
+- `PLXTRTA-TST-IT001@pluxeegroup.com`
+- `sinan.akyazici@pluxeegroup.com`
+
+## Limits
+
+- `old_value` is best-effort, not a guaranteed previous-state read
+- direct bind login does not validate authorization groups
+- the session store is in memory only
+- JSON validation is heuristic for objects and arrays, not all JSON forms
+- the client-side JSON warning works only for traffic that goes through the Consul UI in the browser
+- server-side audit still allows invalid JSON writes if the user or calling client sends them
