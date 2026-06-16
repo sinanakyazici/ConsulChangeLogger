@@ -1,9 +1,9 @@
-name: Release
+name: Release-publish
 
 on:
   workflow_run:
     workflows:
-      - Release CI
+      - CI-release
     types:
       - completed
 
