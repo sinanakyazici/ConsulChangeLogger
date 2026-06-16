@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build and publish release artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Derive version metadata
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/sinanakyazici/consul-change-logger" >> "$GITHUB_OUTPUT"
+          echo "chart=oci://ghcr.io/sinanakyazici/charts" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore ConsulChangeLogger.slnx
+
+      - name: Build
+        run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test ConsulChangeLogger.slnx --configuration Release --no-build
+
+      - name: Helm lint
+        run: helm lint chart/consul-change-logger
+
+      - name: Helm template
+        run: helm template consul-change-logger chart/consul-change-logger
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/ConsulChangeLogger.Proxy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.tag }}
+            ${{ steps.version.outputs.image }}:latest
+
+      - name: Helm registry login
+        shell: bash
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Package Helm chart
+        shell: bash
+        run: |
+          mkdir -p dist
+          helm package chart/consul-change-logger \
+            --version "${{ steps.version.outputs.version }}" \
+            --app-version "${{ steps.version.outputs.version }}" \
+            --destination dist
+
+      - name: Push Helm chart to GHCR OCI
+        shell: bash
+        run: |
+          helm push "dist/consul-change-logger-${{ steps.version.outputs.version }}.tgz" "${{ steps.version.outputs.chart }}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/consul-change-logger-${{ steps.version.outputs.version }}.tgz

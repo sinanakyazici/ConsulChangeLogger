@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-test-docker:
-    name: Build, test, and Docker build
+    name: Build, test, chart validation, and Docker build
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +22,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
       - name: Restore
         run: dotnet restore ConsulChangeLogger.slnx
 
@@ -29,7 +32,13 @@ jobs:
         run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
 
       - name: Run tests
-        run: dotnet run --configuration Release --project tests/ConsulChangeLogger.Tests/ConsulChangeLogger.Tests.csproj --no-build
+        run: dotnet test ConsulChangeLogger.slnx --configuration Release --no-build
+
+      - name: Helm lint
+        run: helm lint chart/consul-change-logger
+
+      - name: Helm template
+        run: helm template consul-change-logger chart/consul-change-logger
 
       - name: Docker build
         run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile -t consul-change-logger:ci .

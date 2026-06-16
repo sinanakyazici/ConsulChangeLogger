@@ -9,6 +9,8 @@ namespace ConsulChangeLogger.Proxy.Proxying;
 
 internal sealed class ConsulProxy
 {
+    private sealed record MutationPrefetchState(bool WasChecked, bool ValueExists);
+
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Connection",
@@ -51,6 +53,7 @@ internal sealed class ConsulProxy
 
             var requestBodyBytes = await ReadRequestBodyAsync();
             var requestBody = Encoding.UTF8.GetString(requestBodyBytes);
+            var mutationPrefetchState = await PrefetchOldValueForMutationAsync();
             using var upstreamRequest = BuildUpstreamRequest(requestBodyBytes);
             using var upstreamResponse = await httpClientFactory
                 .CreateClient("consul")
@@ -65,7 +68,7 @@ internal sealed class ConsulProxy
                 requestBodyBytes.Length,
                 responseBodyBytes.Length);
             await WriteDownstreamResponseAsync(upstreamResponse, responseBodyBytes);
-            await CaptureChangeRecordAsync(requestBody, upstreamResponse, responseBodyBytes);
+            await CaptureChangeRecordAsync(requestBody, upstreamResponse, responseBodyBytes, mutationPrefetchState);
         }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
@@ -152,6 +155,95 @@ internal sealed class ConsulProxy
         await context.Response.Body.WriteAsync(responseBodyBytes, context.RequestAborted);
     }
 
+    private async Task<MutationPrefetchState> PrefetchOldValueForMutationAsync()
+    {
+        var sourcePath = context.Request.Path + context.Request.QueryString;
+        var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
+        if (action is not ("kv_write" or "kv_delete"))
+        {
+            return new MutationPrefetchState(false, false);
+        }
+
+        var kvKey = ConsulKvChangeHelpers.KvKeyFromPath(sourcePath);
+        var clientIp = context.Connection.RemoteIpAddress?.ToString();
+        var userEmail = context.User.FindFirstValue(ClaimTypes.Email) ?? context.User.Identity?.Name;
+        var userAgent = context.Request.Headers.UserAgent.ToString();
+        var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
+
+        if (readCache.Get(identity) is not null)
+        {
+            return new MutationPrefetchState(true, true);
+        }
+
+        var prefetchPath = ConsulKvChangeHelpers.BuildMutationPrefetchPath(sourcePath);
+        if (string.IsNullOrWhiteSpace(prefetchPath))
+        {
+            Log.Debug("Skipping mutation old_value prefetch for {Path} because the request is not a single-key mutation", sourcePath);
+            return new MutationPrefetchState(false, false);
+        }
+
+        try
+        {
+            using var prefetchRequest = new HttpRequestMessage(HttpMethod.Get, context.Request.PathBase + prefetchPath);
+            foreach (var header in context.Request.Headers)
+            {
+                if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                prefetchRequest.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+            }
+
+            using var prefetchResponse = await httpClientFactory
+                .CreateClient("consul")
+                .SendAsync(prefetchRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+
+            if (prefetchResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Log.Debug(
+                    "Mutation old_value prefetch returned 404 for {Path}; key does not exist before {Action}",
+                    prefetchPath,
+                    action);
+                return new MutationPrefetchState(true, false);
+            }
+
+            if (!ConsulKvChangeHelpers.IsSuccess((int)prefetchResponse.StatusCode))
+            {
+                Log.Debug(
+                    "Mutation old_value prefetch returned {StatusCode} for {Path}",
+                    (int)prefetchResponse.StatusCode,
+                    prefetchPath);
+                return new MutationPrefetchState(false, false);
+            }
+
+            var responseBody = await prefetchResponse.Content.ReadAsStringAsync(context.RequestAborted);
+            var oldValue = ConsulKvChangeHelpers.ExtractReadValue(prefetchPath, responseBody);
+            var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            var requestId = Guid.NewGuid().ToString("N");
+            readCache.Store(identity, oldValue, timestamp, requestId);
+
+            Log.Debug(
+                "Prefetched old_value for {Action} {Key} by {Username}. RequestId={RequestId} OldValuePresent={OldValuePresent}",
+                action,
+                kvKey,
+                userEmail,
+                requestId,
+                oldValue is not null);
+            return new MutationPrefetchState(true, oldValue is not null);
+        }
+        catch (HttpRequestException ex)
+        {
+            Log.Warning(ex, "Failed to prefetch old_value for {Path}", sourcePath);
+        }
+        catch (TaskCanceledException) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            Log.Warning("Timed out while prefetching old_value for {Path}", sourcePath);
+        }
+
+        return new MutationPrefetchState(false, false);
+    }
+
     private byte[] InjectClientScriptIfNeeded(HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
     {
         if (!ShouldInjectClientScript(upstreamResponse))
@@ -195,7 +287,7 @@ internal sealed class ConsulProxy
         return string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task CaptureChangeRecordAsync(string requestBody, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
+    private async Task CaptureChangeRecordAsync(string requestBody, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes, MutationPrefetchState mutationPrefetchState)
     {
         var sourcePath = context.Request.Path + context.Request.QueryString;
         if (!ConsulKvChangeHelpers.IsKvPath(sourcePath))
@@ -247,6 +339,9 @@ internal sealed class ConsulProxy
         var oldValueJson = ConsulKvChangeHelpers.InspectJson(read?.Value);
         var newValue = action == "kv_write" ? requestBody : null;
         var newValueJson = ConsulKvChangeHelpers.InspectJson(newValue);
+        var createDetected = action == "kv_write" && mutationPrefetchState.WasChecked && !mutationPrefetchState.ValueExists;
+        var updateDetected = action == "kv_write" && mutationPrefetchState.WasChecked && mutationPrefetchState.ValueExists;
+        var deleteDetected = action == "kv_delete";
         var changeRecord = new ChangeRecord
         {
             Timestamp = timestamp,
@@ -265,7 +360,9 @@ internal sealed class ConsulProxy
             NewValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(newValueJson),
             NewValueIsValidJson = newValueJson.IsValidJson,
             NewValueJsonError = newValueJson.Error,
-            DeleteConfirmed = action == "kv_delete",
+            CreateDetected = createDetected,
+            UpdateDetected = updateDetected,
+            DeleteDetected = deleteDetected,
             Success = ConsulKvChangeHelpers.IsSuccess(responseCode),
             ResponseCode = responseCode,
             ClientIp = clientIp,
@@ -285,11 +382,32 @@ internal sealed class ConsulProxy
                 newValueJson.Error);
         }
 
+        if (createDetected)
+        {
+            Log.Information(
+                "Detected first-time KV creation for {Key} by {Username}. RequestId={RequestId}",
+                kvKey,
+                userEmail,
+                requestId);
+        }
+
+        if (updateDetected)
+        {
+            Log.Information(
+                "Detected KV update for {Key} by {Username}. RequestId={RequestId}",
+                kvKey,
+                userEmail,
+                requestId);
+        }
+
         await changeRecordSink.SendAsync(changeRecord, context.RequestAborted);
         Log.Information(
-            "Queued audit record Action={Action} Key={Key} Success={Success} User={Username} RequestId={RequestId}",
+            "Queued audit record Action={Action} Key={Key} CreateDetected={CreateDetected} UpdateDetected={UpdateDetected} DeleteDetected={DeleteDetected} Success={Success} User={Username} RequestId={RequestId}",
             action,
             kvKey,
+            createDetected,
+            updateDetected,
+            deleteDetected,
             changeRecord.Success,
             userEmail,
             requestId);

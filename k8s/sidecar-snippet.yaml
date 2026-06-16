@@ -1,12 +1,13 @@
-# Add this container and volumeMount to the existing Consul UI pod template.
-# Route the Consul UI Service/Ingress to port 8080 so all UI/API traffic passes through this sidecar.
+# Legacy/example sidecar snippet.
+# The Helm chart is the primary install artifact.
+# Use this file only as a manual reference when patching an existing Consul workload.
 securityContext:
   fsGroup: 1654
   fsGroupChangePolicy: OnRootMismatch
 
 containers:
   - name: consul-change-logger
-    image: your-registry/consul-change-logger:latest
+    image: ghcr.io/sinanakyazici/consul-change-logger:latest
     imagePullPolicy: IfNotPresent
     securityContext:
       allowPrivilegeEscalation: false
@@ -20,6 +21,11 @@ containers:
     ports:
       - name: logger-http
         containerPort: 8080
+    env:
+      - name: CONSUL_UPSTREAM_URL
+        value: "http://127.0.0.1:8500"
+      - name: CONSUL_CONFIG_KEY
+        value: "consul-change-logger/appsettings.json"
     volumeMounts:
       - name: change-log-outbox
         mountPath: /var/lib/consul-change-logger/outbox

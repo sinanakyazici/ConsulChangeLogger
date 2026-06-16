@@ -1,0 +1,19 @@
+{{- if .Values.outbox.pvc.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.outbox.pvc.name }}
+  namespace: {{ include "consul-change-logger.namespace" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "consul-change-logger.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  accessModes:
+    - {{ .Values.outbox.pvc.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.outbox.pvc.size }}
+  {{- if .Values.outbox.pvc.storageClassName }}
+  storageClassName: {{ .Values.outbox.pvc.storageClassName }}
+  {{- end }}
+{{- end }}

@@ -14,6 +14,46 @@ The product is intentionally narrow:
 - it does not implement approval workflows
 - it does not modify KV payloads before they reach Consul
 
+## Product Model
+
+Consul Change Logger is packaged as a Kubernetes sidecar product for environments where:
+
+- `Consul` already exists
+- `Elasticsearch`, `Kibana`, and `LDAP` already exist
+- the existing browser-facing `consul-ui` Service can be patched to point at the sidecar
+
+Ownership boundary:
+
+- this product does not install or own Consul
+- this product does not install Elasticsearch, Kibana, or LDAP
+- this product owns only its own sidecar container spec, outbox PVC, and release artifacts
+
+Official distribution artifacts:
+
+- container image: `ghcr.io/sinanakyazici/consul-change-logger`
+- Helm chart OCI package: `oci://ghcr.io/sinanakyazici/charts/consul-change-logger`
+- GitHub Release asset: `consul-change-logger-X.Y.Z.tgz`
+
+## Release Model
+
+Releases are tag-driven.
+
+When a semantic version tag such as `v1.2.3` is pushed, the release workflow publishes:
+
+- container image:
+  - `ghcr.io/sinanakyazici/consul-change-logger:v1.2.3`
+  - `ghcr.io/sinanakyazici/consul-change-logger:latest`
+- Helm OCI chart:
+  - `oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.2.3`
+- GitHub Release:
+  - release notes
+  - packaged chart asset `consul-change-logger-1.2.3.tgz`
+
+Relevant workflows:
+
+- [CI](.github/workflows/ci.yml)
+- [Release](.github/workflows/release.yml)
+
 ## What It Does
 
 - Authenticates browser users with LDAP before they can access Consul UI or the Consul API through the proxy.
@@ -24,6 +64,37 @@ The product is intentionally narrow:
 - Retries Elasticsearch delivery until the record is accepted.
 - Adds JSON validation metadata for `old_value` and `new_value`.
 - Shows a browser warning before saving a KV value that looks like JSON but is invalid JSON.
+
+## Install Model
+
+The intended Kubernetes install flow is:
+
+1. install the Helm chart
+2. seed runtime config into Consul KV
+3. manually patch the existing Consul workload to add the sidecar
+4. manually patch the existing `consul-ui` Service so browser traffic goes to port `8080`
+
+The Helm chart creates only the product-owned PVC and prints patch instructions in `NOTES.txt`.
+
+Install example:
+
+```powershell
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+```
+
+Upgrade example:
+
+```powershell
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+```
+
+The sidecar bootstrap contract is environment-variable based:
+
+- `CONSUL_UPSTREAM_URL`
+- `CONSUL_CONFIG_KEY`
+- optional `CONSUL_HTTP_TOKEN`
+
+All remaining runtime settings are read from Consul KV.
 
 ## End-to-End Flow
 
@@ -161,7 +232,7 @@ The proxy logs:
 
 ## Configuration
 
-Bootstrap configuration is read from `src/ConsulChangeLogger.Proxy/appsettings.json`:
+Bootstrap configuration defaults exist in `src/ConsulChangeLogger.Proxy/appsettings.json`, but the intended production path is environment variables on the sidecar container:
 
 ```json
 {
@@ -172,7 +243,15 @@ Bootstrap configuration is read from `src/ConsulChangeLogger.Proxy/appsettings.j
 }
 ```
 
-Runtime configuration is read from the Consul KV key referenced by `ConfigKey`.
+Production bootstrap contract:
+
+```text
+CONSUL_UPSTREAM_URL
+CONSUL_CONFIG_KEY
+CONSUL_HTTP_TOKEN (optional)
+```
+
+Runtime configuration is read from the Consul KV key referenced by `CONSUL_CONFIG_KEY`.
 
 Example runtime configuration:
 
@@ -288,7 +367,11 @@ as the time field.
 
 ## Kubernetes
 
-Kubernetes-related examples and notes:
+Primary install artifact:
+
+- `chart/consul-change-logger`
+
+Supporting examples and notes:
 
 - [k8s/sidecar-snippet.yaml](k8s/sidecar-snippet.yaml)
 - [k8s/service-example.yaml](k8s/service-example.yaml)

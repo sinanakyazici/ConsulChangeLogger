@@ -94,24 +94,20 @@ Only one Consul Change Logger pod/sidecar is active.
 
 Single-pod operation keeps `old_value` matching deterministic because the read cache is local memory.
 
-## 2. Build and Publish the Image
+## 2. Install the Helm Chart
 
-Build the image:
-
-```powershell
-docker build -f src\ConsulChangeLogger.Proxy\Dockerfile -t your-registry/consul-change-logger:1.0.0 .
-```
-
-Push it:
+Install the chart from GHCR OCI:
 
 ```powershell
-docker push your-registry/consul-change-logger:1.0.0
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n <consul-namespace>
 ```
 
-Update `k8s/sidecar-snippet.yaml`:
+This chart intentionally creates only the product-owned PVC and prints the patch steps in `NOTES.txt`.
 
-```yaml
-image: your-registry/consul-change-logger:1.0.0
+Verify the release:
+
+```powershell
+helm status consul-change-logger -n <consul-namespace>
 ```
 
 ## 3. Protect the Configuration Prefix
@@ -121,20 +117,19 @@ All runtime settings, including LDAP and Elasticsearch credentials, are stored i
 Use either `Elasticsearch.ApiKey` or `Elasticsearch.Username` + `Elasticsearch.Password`. If API key is set, it takes precedence.
 
 ## 4. Create Persistent Volumes
-
 Consul Change Logger needs persistent writable storage for:
 
 | Path | Purpose |
 | --- | --- |
 | `/var/lib/consul-change-logger/outbox` | Durable retry buffer for Elasticsearch delivery |
 
-Apply the example PVCs:
+If you install through Helm, the PVC is created by the chart. Confirm it exists:
 
 ```powershell
-kubectl apply -f k8s/pvc-example.yaml
+kubectl get pvc -n <consul-namespace>
 ```
 
-Adjust storage size and storage class according to your cluster policy.
+Adjust size and storage class through Helm values before install if needed.
 
 ## 5. Seed Runtime Configuration in Consul KV
 
@@ -154,16 +149,18 @@ Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example
 
 ## 6. Add the Sidecar to the Consul Pod
 
-Edit the existing Consul Deployment/StatefulSet and add the Consul Change Logger container from `k8s/sidecar-snippet.yaml`.
+Patch the existing Consul Deployment/StatefulSet using the sidecar snippet produced by the chart `NOTES.txt`.
 
 Key points:
 
-- `ConsulConfiguration.UpstreamUrl` in the application `appsettings.json` should point to the Consul HTTP endpoint.
+- `CONSUL_UPSTREAM_URL` should point to the in-pod Consul HTTP endpoint, usually `http://127.0.0.1:8500`
+- `CONSUL_CONFIG_KEY` should point to the Consul KV JSON document
+- `CONSUL_HTTP_TOKEN` is optional and only needed if Consul KV bootstrap access requires it
 - The sidecar listens on port `8080`.
 - The pod-level `fsGroup` should allow the non-root container user to write mounted PVCs.
 - The outbox path must be mounted as a writable volume.
 
-Apply the Deployment/StatefulSet change:
+Apply your patched workload manifest:
 
 ```powershell
 kubectl apply -f your-consul-workload.yaml
@@ -175,11 +172,11 @@ Watch rollout:
 kubectl rollout status deployment/consul -n consul
 ```
 
-Use the correct workload kind/name for your environment.
+Use the correct workload kind/name for your environment. The chart does not patch the workload automatically.
 
 ## 7. Route Consul Traffic Through the Sidecar
 
-Update the existing Consul UI Service so it targets the Consul Change Logger sidecar port instead of the original Consul port.
+Patch the existing Consul UI Service so it targets the Consul Change Logger sidecar port instead of the original Consul port.
 
 Before:
 
@@ -193,17 +190,15 @@ After:
 targetPort: logger-http
 ```
 
-Example:
+Example patch target:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: consul
+  name: consul-ui
   namespace: consul
 spec:
-  selector:
-    app: consul
   ports:
     - name: http
       port: 80
@@ -214,10 +209,10 @@ Your Ingress hostname can stay the same. The user should continue opening the ex
 
 ## 8. Verify Health
 
-Port-forward the service:
+Port-forward the existing browser-facing Service:
 
 ```powershell
-kubectl port-forward svc/consul -n consul 8080:80
+kubectl port-forward svc/<consul-ui-service-name> -n <consul-namespace> 8080:<consul-ui-service-port>
 ```
 
 Check liveness:
@@ -246,9 +241,10 @@ Expected:
 
 If readiness fails, check:
 
-- Consul URL from the sidecar
+- `CONSUL_UPSTREAM_URL`
+- `CONSUL_CONFIG_KEY`
 - Elasticsearch URL/auth/TLS
-- Consul KV credential values
+- `CONSUL_HTTP_TOKEN` if used
 - Consul KV config prefix
 
 ## 9. Verify Login

@@ -1,0 +1,47 @@
+nameOverride: ""
+fullnameOverride: ""
+
+namespaceOverride: ""
+
+image:
+  repository: ghcr.io/sinanakyazici/consul-change-logger
+  tag: latest
+  pullPolicy: IfNotPresent
+
+bootstrap:
+  # In-pod Consul HTTP endpoint that the sidecar will forward UI/API traffic to.
+  consulUpstreamUrl: "http://127.0.0.1:8500"
+  # Consul KV key that contains the runtime JSON document.
+  consulConfigKey: "consul-change-logger/appsettings.json"
+  # Optional Consul token for reading the runtime config key.
+  consulHttpToken: ""
+
+existingConsul:
+  # Existing Consul workload and browser-facing Service metadata.
+  namespace: consul
+  workloadKind: StatefulSet
+  workloadName: consul-server
+  uiServiceName: consul-ui
+  uiServicePort: 80
+
+sidecar:
+  port: 8080
+  fsGroup: 1654
+  runAsUser: 1654
+  runAsGroup: 1654
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+outbox:
+  pvc:
+    enabled: true
+    name: consul-change-logger-outbox
+    # Leave empty to use the cluster default storage class.
+    storageClassName: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi

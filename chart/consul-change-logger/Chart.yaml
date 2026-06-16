@@ -1,0 +1,16 @@
+apiVersion: v2
+name: consul-change-logger
+description: Helm chart for installing Consul Change Logger sidecar support assets into an existing Consul environment.
+type: application
+version: 0.0.0
+appVersion: "0.0.0"
+home: https://github.com/sinanakyazici/ConsulChangeLogger
+sources:
+  - https://github.com/sinanakyazici/ConsulChangeLogger
+keywords:
+  - consul
+  - audit
+  - elasticsearch
+  - sidecar
+maintainers:
+  - name: sinanakyazici

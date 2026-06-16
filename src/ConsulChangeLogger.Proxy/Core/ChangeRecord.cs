@@ -52,8 +52,14 @@ public sealed record ChangeRecord
     [JsonPropertyName("new_value_json_error")]
     public string? NewValueJsonError { get; init; }
 
-    [JsonPropertyName("delete_confirmed")]
-    public bool DeleteConfirmed { get; init; }
+    [JsonPropertyName("create_detected")]
+    public bool CreateDetected { get; init; }
+
+    [JsonPropertyName("update_detected")]
+    public bool UpdateDetected { get; init; }
+
+    [JsonPropertyName("delete_detected")]
+    public bool DeleteDetected { get; init; }
 
     [JsonPropertyName("success")]
     public bool Success { get; init; }

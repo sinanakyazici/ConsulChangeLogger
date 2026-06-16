@@ -96,6 +96,80 @@ public static class ConsulKvChangeHelpers
         }
     }
 
+    public static string? BuildMutationPrefetchPath(string path)
+    {
+        if (!IsKvPath(path))
+        {
+            return null;
+        }
+
+        var cleanPath = PathWithoutQuery(path);
+        var kvKey = KvKeyFromPath(path);
+        if (string.IsNullOrWhiteSpace(kvKey))
+        {
+            return null;
+        }
+
+        var queryIndex = path.IndexOf('?', StringComparison.Ordinal);
+        if (queryIndex < 0)
+        {
+            return $"{cleanPath}?raw";
+        }
+
+        var query = path[(queryIndex + 1)..];
+        var parameters = ParseQueryString(query);
+        if (parameters.Any(x => x.Key.Equals("recurse", StringComparison.OrdinalIgnoreCase)) ||
+            parameters.Any(x => x.Key.Equals("keys", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        var items = new List<string>();
+        foreach (var parameter in parameters)
+        {
+            if (parameter.Key.Equals("raw", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            foreach (var value in parameter.Value)
+            {
+                var encodedKey = Uri.EscapeDataString(parameter.Key);
+                var encodedValue = Uri.EscapeDataString(value ?? string.Empty);
+                items.Add($"{encodedKey}={encodedValue}");
+            }
+        }
+
+        items.Add("raw");
+        return $"{cleanPath}?{string.Join("&", items)}";
+    }
+
+    private static IEnumerable<KeyValuePair<string, List<string?>>> ParseQueryString(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return [];
+        }
+
+        var map = new Dictionary<string, List<string?>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var segment in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = segment.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0]);
+            var value = parts.Length == 2 ? Uri.UnescapeDataString(parts[1]) : null;
+
+            if (!map.TryGetValue(key, out var values))
+            {
+                values = [];
+                map[key] = values;
+            }
+
+            values.Add(value);
+        }
+
+        return map;
+    }
+
     public static JsonInspection InspectJson(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

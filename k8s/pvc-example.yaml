@@ -1,3 +1,5 @@
+# Legacy/example PVC manifest.
+# Prefer the Helm chart PVC unless you are applying resources manually.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

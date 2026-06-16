@@ -51,6 +51,22 @@ public sealed class ConsulKvChangeHelpersTests
     }
 
     [Fact]
+    public void BuildMutationPrefetchPath_AddsRawToSingleKeyDelete()
+    {
+        var result = ConsulKvChangeHelpers.BuildMutationPrefetchPath("/v1/kv/app/key?dc=dc1");
+
+        Assert.Equal("/v1/kv/app/key?dc=dc1&raw", result);
+    }
+
+    [Fact]
+    public void BuildMutationPrefetchPath_ReturnsNullForRecurseDelete()
+    {
+        var result = ConsulKvChangeHelpers.BuildMutationPrefetchPath("/v1/kv/app/key?recurse");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void InspectJson_ReturnsValidJson_ForObjectPayload()
     {
         var result = ConsulKvChangeHelpers.InspectJson("{\"a\":1}");
