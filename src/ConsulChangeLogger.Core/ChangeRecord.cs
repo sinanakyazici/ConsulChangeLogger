@@ -19,6 +19,18 @@ public sealed record ChangeRecord
     [JsonPropertyName("old_value")]
     public string? OldValue { get; init; }
 
+    [JsonPropertyName("old_value_looks_like_json")]
+    public bool OldValueLooksLikeJson { get; init; }
+
+    [JsonPropertyName("old_value_json_validation_status")]
+    public string OldValueJsonValidationStatus { get; init; } = "not_json";
+
+    [JsonPropertyName("old_value_is_valid_json")]
+    public bool? OldValueIsValidJson { get; init; }
+
+    [JsonPropertyName("old_value_json_error")]
+    public string? OldValueJsonError { get; init; }
+
     [JsonPropertyName("old_value_seen_at")]
     public string? OldValueSeenAt { get; init; }
 
@@ -27,6 +39,18 @@ public sealed record ChangeRecord
 
     [JsonPropertyName("new_value")]
     public string? NewValue { get; init; }
+
+    [JsonPropertyName("new_value_looks_like_json")]
+    public bool NewValueLooksLikeJson { get; init; }
+
+    [JsonPropertyName("new_value_json_validation_status")]
+    public string NewValueJsonValidationStatus { get; init; } = "not_json";
+
+    [JsonPropertyName("new_value_is_valid_json")]
+    public bool? NewValueIsValidJson { get; init; }
+
+    [JsonPropertyName("new_value_json_error")]
+    public string? NewValueJsonError { get; init; }
 
     [JsonPropertyName("delete_confirmed")]
     public bool DeleteConfirmed { get; init; }

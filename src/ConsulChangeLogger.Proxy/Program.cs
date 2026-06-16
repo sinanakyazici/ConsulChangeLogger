@@ -11,9 +11,10 @@ using System.Net.Http.Headers;
 using System.Text;
 
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Information()
+    .MinimumLevel.Debug()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("System", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
     .WriteTo.Console()
     .CreateBootstrapLogger();
 
@@ -24,9 +25,10 @@ var runtimeConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, Cancell
 builder.Host.UseSerilog((_, loggerConfiguration) =>
 {
     loggerConfiguration
-        .MinimumLevel.Information()
+        .MinimumLevel.Debug()
         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
         .MinimumLevel.Override("System", LogEventLevel.Warning)
+        .Enrich.FromLogContext()
         .WriteTo.Console();
 });
 
@@ -65,8 +67,28 @@ if (runtimeConfig.Elasticsearch.SkipCertificateValidation)
 }
 
 var app = builder.Build();
+app.UseSerilogRequestLogging(options =>
+{
+    options.GetLevel = (httpContext, _, ex) =>
+    {
+        if (ex is not null || httpContext.Response.StatusCode >= 500)
+        {
+            return LogEventLevel.Error;
+        }
+
+        return LogEventLevel.Debug;
+    };
+});
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UserSessionMiddleware>();
+
+Log.Information(
+    "Consul Change Logger starting. Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL}",
+    bootstrapOptions.ConsulUpstreamUrl,
+    runtimeConfig.Elasticsearch.Url,
+    runtimeConfig.LdapConfiguration.Domain,
+    runtimeConfig.LdapConfiguration.UseSSL ? runtimeConfig.LdapConfiguration.SecurePort : runtimeConfig.LdapConfiguration.Port,
+    runtimeConfig.LdapConfiguration.UseSSL);
 
 using (var scope = app.Services.CreateScope())
 {
@@ -77,16 +99,22 @@ using (var scope = app.Services.CreateScope())
 
 app.MapHealthEndpoints();
 app.MapAuthenticationEndpoints();
+app.MapGet(JsonValidationClientScript.Path, () =>
+{
+    return Results.Text(JsonValidationClientScript.Content, "application/javascript; charset=utf-8");
+});
 app.Map("/{**path}", async context =>
 {
     if (context.User.Identity?.IsAuthenticated != true)
     {
+        Log.Debug("Unauthenticated request for {Path}; redirecting to /login", context.Request.Path);
         context.Response.Redirect("/login");
         return;
     }
 
     if (context.Request.Path == "/")
     {
+        Log.Debug("Authenticated root request; redirecting to /ui/");
         context.Response.Redirect("/ui/");
         return;
     }

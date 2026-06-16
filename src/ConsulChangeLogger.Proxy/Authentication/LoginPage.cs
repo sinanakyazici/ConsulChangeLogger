@@ -35,8 +35,8 @@ internal static class LoginPage
       <h1>Consul Change Logger</h1>
       {{errorHtml}}
       <input name="csrf_token" type="hidden" value="{{WebUtility.HtmlEncode(csrfToken)}}">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
       <button type="submit">Sign in</button>

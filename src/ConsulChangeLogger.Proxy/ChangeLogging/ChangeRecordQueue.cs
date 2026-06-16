@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using ConsulChangeLogger.Core;
 using ConsulChangeLogger.Proxy.Configuration;
+using Serilog;
 
 namespace ConsulChangeLogger.Proxy.ChangeLogging;
 
@@ -19,8 +20,14 @@ internal sealed class ChangeRecordQueue
     }
 
     public ValueTask EnqueueAsync(string outboxPath, CancellationToken cancellationToken) =>
-        channel.Writer.WriteAsync(outboxPath, cancellationToken);
+        EnqueueInternalAsync(outboxPath, cancellationToken);
 
     public IAsyncEnumerable<string> ReadAllAsync(CancellationToken cancellationToken) =>
         channel.Reader.ReadAllAsync(cancellationToken);
+
+    private async ValueTask EnqueueInternalAsync(string outboxPath, CancellationToken cancellationToken)
+    {
+        Log.Debug("Queueing change record outbox file {OutboxPath}", outboxPath);
+        await channel.Writer.WriteAsync(outboxPath, cancellationToken);
+    }
 }

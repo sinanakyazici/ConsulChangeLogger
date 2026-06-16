@@ -5,6 +5,8 @@ namespace ConsulChangeLogger.Core;
 
 public static class ConsulKvChangeHelpers
 {
+    public sealed record JsonInspection(bool LooksLikeJson, bool? IsValidJson, string? Error);
+
     public static bool IsSuccess(int statusCode) => statusCode is >= 200 and < 300;
 
     public static string PathWithoutQuery(string path)
@@ -93,4 +95,38 @@ public static class ConsulKvChangeHelpers
             }
         }
     }
+
+    public static JsonInspection InspectJson(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new JsonInspection(false, null, null);
+        }
+
+        var trimmed = value.TrimStart();
+        var looksLikeJson = trimmed.StartsWith('{') || trimmed.StartsWith('[');
+        if (!looksLikeJson)
+        {
+            return new JsonInspection(false, null, null);
+        }
+
+        try
+        {
+            using var _ = JsonDocument.Parse(value);
+            return new JsonInspection(true, true, null);
+        }
+        catch (JsonException ex)
+        {
+            return new JsonInspection(true, false, ex.Message);
+        }
+    }
+
+    public static string JsonValidationStatus(JsonInspection inspection) =>
+        inspection switch
+        {
+            { LooksLikeJson: false } => "not_json",
+            { IsValidJson: true } => "valid_json",
+            { IsValidJson: false } => "invalid_json",
+            _ => "not_json"
+        };
 }

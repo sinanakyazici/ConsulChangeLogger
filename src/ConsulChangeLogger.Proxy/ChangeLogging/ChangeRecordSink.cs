@@ -35,6 +35,8 @@ internal sealed class ChangeRecordSink
 
     public async Task WaitForElasticsearchAsync(CancellationToken cancellationToken)
     {
+        Log.Information("Waiting for Elasticsearch availability at {ElasticsearchUrl}", elasticsearchConfiguration.Url);
+
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -42,15 +44,22 @@ internal sealed class ChangeRecordSink
                 using var response = await httpClientFactory.CreateClient("elasticsearch").GetAsync("/", cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
+                    Log.Information("Elasticsearch is reachable at {ElasticsearchUrl}", elasticsearchConfiguration.Url);
                     return;
                 }
+
+                Log.Warning(
+                    "Elasticsearch health probe returned status {StatusCode} for {ElasticsearchUrl}",
+                    (int)response.StatusCode,
+                    elasticsearchConfiguration.Url);
             }
             catch (HttpRequestException ex)
             {                              
-                Log.Error(ex, "Failed to connect to Elasticsearch");
+                Log.Error(ex, "Failed to connect to Elasticsearch at {ElasticsearchUrl}", elasticsearchConfiguration.Url);
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                Log.Warning("Elasticsearch health probe timed out for {ElasticsearchUrl}", elasticsearchConfiguration.Url);
             }
 
             Log.Information("Waiting for Elasticsearch");
@@ -60,27 +69,42 @@ internal sealed class ChangeRecordSink
 
     public async Task EnsureIndexAsync(CancellationToken cancellationToken)
     {
+        Log.Information(
+            "Ensuring Elasticsearch index {IndexName} exists on {ElasticsearchUrl}",
+            elasticsearchConfiguration.Index,
+            elasticsearchConfiguration.Url);
+
+        var properties = new Dictionary<string, object>
+        {
+            ["@timestamp"] = new { type = "date" },
+            ["event_id"] = new { type = "keyword" },
+            ["action"] = new { type = "keyword" },
+            ["kv_key"] = new { type = "keyword" },
+            ["old_value"] = new { type = "text" },
+            ["old_value_looks_like_json"] = new { type = "boolean" },
+            ["old_value_json_validation_status"] = new { type = "keyword" },
+            ["old_value_is_valid_json"] = new { type = "boolean" },
+            ["old_value_json_error"] = new { type = "text" },
+            ["new_value"] = new { type = "text" },
+            ["new_value_looks_like_json"] = new { type = "boolean" },
+            ["new_value_json_validation_status"] = new { type = "keyword" },
+            ["new_value_is_valid_json"] = new { type = "boolean" },
+            ["new_value_json_error"] = new { type = "text" },
+            ["delete_confirmed"] = new { type = "boolean" },
+            ["success"] = new { type = "boolean" },
+            ["response_code"] = new { type = "integer" },
+            ["client_ip"] = new { type = "ip" },
+            ["user_email"] = new { type = "keyword" },
+            ["user_agent"] = new { type = "keyword" },
+            ["request_id"] = new { type = "keyword" },
+            ["source"] = new { type = "keyword" }
+        };
+
         var mapping = new
         {
             mappings = new
             {
-                properties = new Dictionary<string, object>
-                {
-                    ["@timestamp"] = new { type = "date" },
-                    ["event_id"] = new { type = "keyword" },
-                    ["action"] = new { type = "keyword" },
-                    ["kv_key"] = new { type = "keyword" },
-                    ["old_value"] = new { type = "text" },
-                    ["new_value"] = new { type = "text" },
-                    ["delete_confirmed"] = new { type = "boolean" },
-                    ["success"] = new { type = "boolean" },
-                    ["response_code"] = new { type = "integer" },
-                    ["client_ip"] = new { type = "ip" },
-                    ["user_email"] = new { type = "keyword" },
-                    ["user_agent"] = new { type = "keyword" },
-                    ["request_id"] = new { type = "keyword" },
-                    ["source"] = new { type = "keyword" }
-                }
+                properties
             }
         };
 
@@ -94,11 +118,41 @@ internal sealed class ChangeRecordSink
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             if (response.StatusCode == HttpStatusCode.BadRequest && IsIndexAlreadyExists(body))
             {
+                Log.Information("Elasticsearch index {IndexName} already exists", elasticsearchConfiguration.Index);
                 return;
             }
 
+            Log.Error(
+                "Failed to ensure Elasticsearch index {IndexName}. StatusCode={StatusCode} Body={Body}",
+                elasticsearchConfiguration.Index,
+                (int)response.StatusCode,
+                body);
             response.EnsureSuccessStatusCode();
         }
+
+        var mappingUpdate = new
+        {
+            properties
+        };
+
+        using var mappingContent = JsonContent(mappingUpdate);
+        using var mappingResponse = await httpClientFactory
+            .CreateClient("elasticsearch")
+            .PutAsync($"/{elasticsearchConfiguration.Index}/_mapping", mappingContent, cancellationToken);
+
+        if (!mappingResponse.IsSuccessStatusCode)
+        {
+            var body = await mappingResponse.Content.ReadAsStringAsync(cancellationToken);
+            Log.Error(
+                "Failed to update Elasticsearch mapping for index {IndexName}. StatusCode={StatusCode} Body={Body}",
+                elasticsearchConfiguration.Index,
+                (int)mappingResponse.StatusCode,
+                body);
+            mappingResponse.EnsureSuccessStatusCode();
+        }
+
+        Log.Information("Elasticsearch mapping for index {IndexName} is up to date", elasticsearchConfiguration.Index);
+        Log.Information("Elasticsearch index {IndexName} is ready", elasticsearchConfiguration.Index);
     }
 
     private static bool IsIndexAlreadyExists(string body)
@@ -117,9 +171,18 @@ internal sealed class ChangeRecordSink
     public async Task SendAsync(ChangeRecord changeRecord, CancellationToken cancellationToken)
     {
         var eventJson = JsonSerializer.Serialize(changeRecord, JsonOptions);
+        Log.Debug(
+            "Preparing change record EventId={EventId} Action={Action} Key={Key} Success={Success} RequestId={RequestId}",
+            changeRecord.EventId,
+            changeRecord.Action,
+            changeRecord.KvKey,
+            changeRecord.Success,
+            changeRecord.RequestId);
+        Log.Debug("Change record JSON: {ChangeRecordJson}", eventJson);
+
         ChangeRecordOutbox.DeleteExpiredDailyDirectories(
             options.OutboxPath,
-            elasticsearchConfiguration.RetryDelaySeconds,
+            options.RetentionDays,
             DateTimeOffset.UtcNow);
 
         var outboxPath = ChangeRecordOutbox.BuildPath(
@@ -129,6 +192,10 @@ internal sealed class ChangeRecordSink
 
         Directory.CreateDirectory(Path.GetDirectoryName(outboxPath)!);
         await File.WriteAllTextAsync(outboxPath, eventJson, Encoding.UTF8, cancellationToken);
+        Log.Information(
+            "Persisted change record EventId={EventId} to outbox {OutboxPath}",
+            changeRecord.EventId,
+            outboxPath);
         await changeRecordQueue.EnqueueAsync(outboxPath, cancellationToken);
     }
 

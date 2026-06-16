@@ -1,0 +1,187 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: samba-ad
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: samba-ad-bootstrap
+  namespace: samba-ad
+type: Opaque
+stringData:
+  ADMINPASS: Passw0rd!123
+  SERVICE_PASS: Passw0rd!123
+  USER_PASS: "PlxTest123!"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: samba-ad-seed
+  namespace: samba-ad
+data:
+  10-seed.sh: |
+    #!/bin/sh
+    set -eu
+
+    BASE_DN="DC=pluxeegroup,DC=com"
+    ACCOUNTS_OU="OU=Accounts,OU=Turkey,OU=Pluxee,${BASE_DN}"
+    SERVICE_USER="PLXTRTA-TST-IT001"
+    TEST_USER="sakyazici"
+
+    samba-tool ou create "OU=Pluxee,${BASE_DN}" >/dev/null 2>&1 || true
+    samba-tool ou create "OU=Turkey,OU=Pluxee,${BASE_DN}" >/dev/null 2>&1 || true
+    samba-tool ou create "${ACCOUNTS_OU}" >/dev/null 2>&1 || true
+
+    samba-tool user create "${SERVICE_USER}" "${SERVICE_PASS}" \
+      --userou="OU=Accounts,OU=Turkey,OU=Pluxee" \
+      --given-name="PLXTRTA" \
+      --surname="TST-IT001" \
+      --mail-address="${SERVICE_USER}@pluxeegroup.com" >/dev/null 2>&1 || true
+
+    samba-tool user create "${TEST_USER}" "${USER_PASS}" \
+      --userou="OU=Accounts,OU=Turkey,OU=Pluxee" \
+      --given-name="Sinan" \
+      --surname="AKYAZICI" \
+      --mail-address="sinan.akyazici@pluxeegroup.com" >/dev/null 2>&1 || true
+    samba-tool user setpassword "${TEST_USER}" --newpassword="${USER_PASS}" >/dev/null 2>&1 || true
+
+    cat >/tmp/test-user.ldif <<EOF
+    dn: CN=Sinan AKYAZICI,OU=Accounts,OU=Turkey,OU=Pluxee,${BASE_DN}
+    changetype: modify
+    replace: userPrincipalName
+    userPrincipalName: sinan.akyazici@pluxeegroup.com
+    -
+    replace: mail
+    mail: sinan.akyazici@pluxeegroup.com
+    EOF
+    ldbmodify -H /var/lib/samba/private/sam.ldb /tmp/test-user.ldif >/dev/null 2>&1 || true
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: samba-ad-data
+  namespace: samba-ad
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: samba-ad
+  namespace: samba-ad
+spec:
+  type: LoadBalancer
+  selector:
+    app: samba-ad
+  ports:
+    - name: ldap
+      port: 389
+      targetPort: 389
+    - name: ldaps
+      port: 636
+      targetPort: 636
+    - name: gc
+      port: 3268
+      targetPort: 3268
+    - name: gcs
+      port: 3269
+      targetPort: 3269
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: samba-ad
+  namespace: samba-ad
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: samba-ad
+  template:
+    metadata:
+      labels:
+        app: samba-ad
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: samba-ad
+          image: smblds/smblds:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REALM
+              value: PLUXEEGROUP.COM
+            - name: DOMAIN
+              value: PLX
+            - name: ADMINPASS
+              valueFrom:
+                secretKeyRef:
+                  name: samba-ad-bootstrap
+                  key: ADMINPASS
+            - name: INSECURE_LDAP
+              value: "true"
+            - name: INSECURE_PASSWORDSETTINGS
+              value: "true"
+            - name: TZ
+              value: Europe/Istanbul
+            - name: SERVICE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: samba-ad-bootstrap
+                  key: SERVICE_PASS
+            - name: USER_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: samba-ad-bootstrap
+                  key: USER_PASS
+          ports:
+            - name: ldap
+              containerPort: 389
+            - name: ldaps
+              containerPort: 636
+            - name: gc
+              containerPort: 3268
+            - name: gcs
+              containerPort: 3269
+          readinessProbe:
+            tcpSocket:
+              port: 389
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 389
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            - name: samba-ad-data
+              mountPath: /etc/samba
+              subPath: etc-samba
+            - name: samba-ad-data
+              mountPath: /var/cache/samba
+              subPath: cache-samba
+            - name: samba-ad-data
+              mountPath: /var/lib/samba
+              subPath: lib-samba
+            - name: samba-ad-data
+              mountPath: /var/log/samba
+              subPath: log-samba
+            - name: samba-ad-data
+              mountPath: /root
+              subPath: root-home
+            - name: samba-ad-seed
+              mountPath: /entrypoint.d/10-seed.sh
+              subPath: 10-seed.sh
+              readOnly: true
+      volumes:
+        - name: samba-ad-data
+          persistentVolumeClaim:
+            claimName: samba-ad-data
+        - name: samba-ad-seed
+          configMap:
+            name: samba-ad-seed
+            defaultMode: 0755

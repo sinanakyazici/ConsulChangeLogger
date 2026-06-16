@@ -25,7 +25,6 @@ Prepare these values before changing anything:
 | LDAP search base | `dc=company,dc=local` | Defines where user and group searches start in the LDAP tree. |
 | LDAP bind DN | `cn=readonly,ou=service-users,dc=company,dc=local` | Optional readonly account used for LDAP searches when anonymous search is not allowed. |
 | LDAP search filter | `(mail={0})` | Defines how a login value maps to an LDAP user. |
-| LDAP group allowlist filter | `(&(objectClass=group)(cn=consul-admins)(member={0}))` | Limits access to approved LDAP group members after successful authentication. |
 
 If you do not know these values, start with these discovery commands:
 
@@ -265,7 +264,6 @@ Expected flow:
 1. Consul Change Logger shows the login page.
 2. User enters email/password.
 3. LDAP authentication succeeds.
-4. `LdapConfiguration.GroupFilter` allowlist check succeeds when configured.
 5. User is redirected to the Consul web UI.
 
 If login fails:
@@ -370,7 +368,6 @@ To test retry behavior safely in a non-production environment:
 Before enabling this for all users:
 
 - Consul traffic routes through Consul Change Logger.
-- `LdapConfiguration.GroupFilter` is set.
 - Consul ACLs are enabled.
 - Elasticsearch TLS/auth works.
 - Consul ACLs restrict read access to the configuration prefix containing credentials.

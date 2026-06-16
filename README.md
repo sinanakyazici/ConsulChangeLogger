@@ -16,7 +16,7 @@ flowchart LR
     user["fa:fa-user User browser"]
     ingress["fa:fa-route Ingress / Service"]
     proxy["fa:fa-shield Consul Change Logger<br/>Reverse proxy + login gate"]
-    ldap["fa:fa-lock LDAP<br/>Authentication + group allowlist"]
+    ldap["fa:fa-lock LDAP<br/>Authentication"]
     consul["fa:fa-server Consul UI / HTTP API"]
     cache["fa:fa-clock Read cache<br/>old_value lookup"]
     outbox["fa:fa-folder-open Daily outbox<br/>durable retry buffer"]
@@ -86,7 +86,6 @@ flowchart LR
 - All runtime values, including LDAP and Elasticsearch credentials, can be loaded from Consul KV.
 - Terminate HTTPS at ingress or load balancer level.
 - Persist the outbox path when running more than a temporary local environment.
-- Use `LdapConfiguration.GroupFilter` in production so successful LDAP authentication is limited to an approved group.
 - Restrict access to the Consul KV configuration prefix because it contains plaintext credentials.
 - Login uses CSRF token validation, an in-memory session store, and standard browser hardening headers. The browser cookie contains only an opaque session id.
 
@@ -192,7 +191,6 @@ For production deployments:
 - mount `ChangeLog.OutboxPath` on persistent storage
 - enable Consul ACLs and limit read access to `consul-change-logger/appsettings.json`, which contains credentials
 - run the container as non-root with read-only root filesystem
-- set `LdapConfiguration.GroupFilter` to an approved group
 - keep Consul ACLs enabled
 
 ## Development

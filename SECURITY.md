@@ -20,7 +20,6 @@ Use GitHub private vulnerability reporting if it is enabled for the repository. 
 
 - `LDAP_BIND_PASSWORD` is intentionally not read from Consul KV. Provide it through a secret-backed environment variable.
 - `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, and `ELASTICSEARCH_API_KEY` are intentionally not read from Consul KV. Provide them through secret-backed environment variables.
-- Use `LDAP_GROUP_FILTER` in production to limit access to an approved LDAP group after successful authentication.
 - Consul Change Logger records raw KV values by design. Do not store sensitive data in Consul KV if those values must not appear in logs or Elasticsearch.
 - Use HTTPS at the ingress/load-balancer layer and set `AUTH_COOKIE_SECURE=true` for production.
 - Run Consul with ACLs enabled. Consul Change Logger is not an authorization system.

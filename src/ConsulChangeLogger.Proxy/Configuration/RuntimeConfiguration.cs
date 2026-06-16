@@ -36,6 +36,5 @@ internal sealed record LdapConfiguration
     public string BindCredentials { get; init; } = string.Empty;
     public string SearchBase { get; init; } = string.Empty;
     public string SearchFilter { get; init; } = "(mail={0})";
-    public string GroupFilter { get; init; } = string.Empty;
     public bool UseSSL { get; init; }
 }
