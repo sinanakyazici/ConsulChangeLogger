@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using ConsulChangeLogger.Core;
 using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
 

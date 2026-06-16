@@ -1,4 +1,3 @@
-using ConsulChangeLogger.Core;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Authentication;

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ConsulChangeLogger.Core;
+namespace ConsulChangeLogger.Proxy;
 
 public sealed record ChangeRecord
 {
@@ -30,6 +30,12 @@ public sealed record ChangeRecord
 
     [JsonPropertyName("old_value_json_error")]
     public string? OldValueJsonError { get; init; }
+
+    [JsonPropertyName("old_value_seen_at")]
+    public string? OldValueSeenAt { get; init; }
+
+    [JsonPropertyName("old_value_read_request_id")]
+    public string? OldValueReadRequestId { get; init; }
 
     [JsonPropertyName("new_value")]
     public string? NewValue { get; init; }

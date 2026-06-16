@@ -2,7 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
 
@@ -85,6 +85,8 @@ internal sealed class ChangeRecordSink
             ["old_value_json_validation_status"] = new { type = "keyword" },
             ["old_value_is_valid_json"] = new { type = "boolean" },
             ["old_value_json_error"] = new { type = "text" },
+            ["old_value_seen_at"] = new { type = "date" },
+            ["old_value_read_request_id"] = new { type = "keyword" },
             ["new_value"] = new { type = "text" },
             ["new_value_looks_like_json"] = new { type = "boolean" },
             ["new_value_json_validation_status"] = new { type = "keyword" },

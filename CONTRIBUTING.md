@@ -33,4 +33,4 @@ The current test project is a lightweight console runner. If you add behavior wi
 - Put Consul forwarding behavior under `src/ConsulChangeLogger.Proxy/Proxying`.
 - Put LDAP and login behavior under `src/ConsulChangeLogger.Proxy/Authentication`.
 - Put change record delivery behavior under `src/ConsulChangeLogger.Proxy/ChangeLogging`.
-- Keep shared value parsing and event models under `src/ConsulChangeLogger.Core`.
+- Keep shared value parsing and event models under `src/ConsulChangeLogger.Proxy/Core`.

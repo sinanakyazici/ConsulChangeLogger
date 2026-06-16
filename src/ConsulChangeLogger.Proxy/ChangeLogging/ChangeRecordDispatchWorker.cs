@@ -1,4 +1,4 @@
-using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
 using System.Text;

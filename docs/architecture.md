@@ -14,6 +14,7 @@ flowchart LR
     consulUi["Consul UI shell<br/>served by Consul"]
     consulApi["Consul HTTP API<br/>/v1/kv and other endpoints"]
     audit["Audit capture inside proxy"]
+    cache["In-memory read cache"]
     outbox["Outbox files<br/>yyyy-MM-dd/*.json"]
     worker["Background dispatch worker"]
     elastic["Elasticsearch<br/>consul-change-logger"]
@@ -26,6 +27,7 @@ flowchart LR
     consulUi --> proxy
     consulApi --> proxy
     proxy -->|observe KV read/write/delete<br/>while forwarding| audit
+    audit -->|store successful reads| cache
     audit -->|persist write/delete audit records| outbox
     outbox -->|enqueue| worker
     worker -->|retry until success| elastic
@@ -104,6 +106,7 @@ sequenceDiagram
     participant UI as Consul UI JS in Browser
     participant Proxy as Consul Change Logger
     participant Consul as Consul API
+    participant Cache as Read Cache
     participant Outbox as Outbox
     participant Worker as Dispatch Worker
     participant ES as Elasticsearch
@@ -117,11 +120,13 @@ sequenceDiagram
     UI->>Proxy: GET /v1/kv/app/key?raw
     Proxy->>Consul: Forward GET
     Consul-->>Proxy: Current value
+    Proxy->>Cache: Store value by user + client + key
     Proxy-->>UI: Return response
 
     UI->>Proxy: PUT /v1/kv/app/key
     Proxy->>Consul: Forward PUT
     Consul-->>Proxy: Write result
+    Proxy->>Cache: Lookup previous read
     Proxy->>Proxy: Build ChangeRecord
     Proxy->>Outbox: Write JSON file
     Proxy->>Worker: Enqueue file path
@@ -130,6 +135,25 @@ sequenceDiagram
     Worker->>Outbox: Delete delivered file
     Proxy-->>UI: Return write result
 ```
+
+### Read cache
+
+`old_value` is best-effort.
+
+The proxy does not fetch Consul state before every write. Instead, it caches the latest successful KV read using this identity model:
+
+- authenticated username
+- client IP
+- user agent
+- KV key
+
+If the same identity later performs a write or delete for the same key, the cached read becomes `old_value`.
+
+This means:
+
+- if there is no prior read, `old_value` can be `null`
+- if the process restarts, `old_value` can be `null`
+- if traffic is split across replicas without shared state, `old_value` can be `null`
 
 ### ChangeRecord structure
 
@@ -143,6 +167,8 @@ Current fields include:
   `success`, `response_code`
 - user context:
   `user_email`, `client_ip`, `user_agent`
+- old value tracking:
+  `old_value_seen_at`, `old_value_read_request_id`
 - JSON validation metadata:
   `old_value_looks_like_json`, `old_value_is_valid_json`, `old_value_json_error`, `old_value_json_validation_status`
   `new_value_looks_like_json`, `new_value_is_valid_json`, `new_value_json_error`, `new_value_json_validation_status`
@@ -227,6 +253,7 @@ It logs:
 - LDAP bind attempts and results
 - HTTP request summaries
 - proxied upstream response details
+- KV read cache hits
 - audit record creation
 - outbox persistence
 - queue and dispatch lifecycle
@@ -273,7 +300,7 @@ Current seeded identities:
 
 ## Limits
 
-- `old_value` is currently not populated because the proxy no longer keeps a read cache
+- `old_value` is best-effort, not a guaranteed previous-state read
 - direct bind login does not validate authorization groups
 - the session store is in memory only
 - JSON validation is heuristic for objects and arrays, not all JSON forms

@@ -1,4 +1,4 @@
-using ConsulChangeLogger.Core;
+using ConsulChangeLogger.Proxy;
 
 namespace ConsulChangeLogger.Tests;
 
@@ -30,6 +30,24 @@ public sealed class ConsulKvChangeHelpersTests
     public void KvAction_NormalizesMethods(string method, string expected)
     {
         Assert.Equal(expected, ConsulKvChangeHelpers.KvAction(method));
+    }
+
+    [Fact]
+    public void ExtractReadValue_DecodesRawResponse()
+    {
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key?raw", "{ \"a\": 1 }");
+
+        Assert.Equal("{ \"a\": 1 }", result);
+    }
+
+    [Fact]
+    public void ExtractReadValue_DecodesBase64ValueFromConsulEnvelope()
+    {
+        var responseBody = """[{ "Value": "eyAiYSIgOiAxIH0=" }]""";
+
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key", responseBody);
+
+        Assert.Equal("{ \"a\" : 1 }", result);
     }
 
     [Fact]

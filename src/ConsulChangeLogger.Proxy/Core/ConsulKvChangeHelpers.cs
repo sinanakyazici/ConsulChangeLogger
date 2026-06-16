@@ -1,6 +1,7 @@
+using System.Text;
 using System.Text.Json;
 
-namespace ConsulChangeLogger.Core;
+namespace ConsulChangeLogger.Proxy;
 
 public static class ConsulKvChangeHelpers
 {
@@ -36,6 +37,64 @@ public static class ConsulKvChangeHelpers
         "DELETE" => "kv_delete",
         _ => "kv_other"
     };
+
+    public static string ReadIdentity(string? clientIp, string? userAgent, string? kvKey, string? userEmail = null) =>
+        string.Join("|", userEmail ?? string.Empty, clientIp ?? string.Empty, userAgent ?? string.Empty, kvKey ?? string.Empty);
+
+    public static string? ExtractReadValue(string path, string? responseBody)
+    {
+        if (string.IsNullOrEmpty(responseBody))
+        {
+            return string.Empty;
+        }
+
+        if (path.Contains("?raw", StringComparison.Ordinal))
+        {
+            return responseBody;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(responseBody);
+        }
+        catch (JsonException)
+        {
+            return responseBody;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() != 1)
+            {
+                return null;
+            }
+
+            var item = root[0];
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("Value", out var valueProperty) ||
+                valueProperty.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            var encodedValue = valueProperty.GetString();
+            if (string.IsNullOrEmpty(encodedValue))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return Encoding.UTF8.GetString(Convert.FromBase64String(encodedValue));
+            }
+            catch (FormatException)
+            {
+                return responseBody;
+            }
+        }
+    }
 
     public static JsonInspection InspectJson(string? value)
     {

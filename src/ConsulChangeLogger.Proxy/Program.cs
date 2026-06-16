@@ -1,3 +1,4 @@
+using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.Authentication;
 using ConsulChangeLogger.Proxy.ChangeLogging;
 using ConsulChangeLogger.Proxy.Configuration;
@@ -38,6 +39,7 @@ builder.Services.AddSingleton(runtimeConfig.LdapConfiguration);
 builder.Services.AddSingleton<LdapAuthenticator>();
 builder.Services.AddSingleton<LoginCsrfTokenStore>();
 builder.Services.AddSingleton<UserSessionStore>();
+builder.Services.AddSingleton(new ReadCache(TimeSpan.FromSeconds(runtimeConfig.ChangeLog.ReadMatchWindowSeconds)));
 builder.Services.AddSingleton<ChangeRecordQueue>();
 builder.Services.AddSingleton<ChangeRecordSink>();
 builder.Services.AddHostedService<ChangeRecordDispatchWorker>();
@@ -120,6 +122,7 @@ app.Map("/{**path}", async context =>
     var proxy = new ConsulProxy(
         context,
         app.Services.GetRequiredService<IHttpClientFactory>(),
+        app.Services.GetRequiredService<ReadCache>(),
         app.Services.GetRequiredService<ChangeRecordSink>());
 
     await proxy.HandleAsync();

@@ -92,7 +92,7 @@ Recommended assumption:
 Only one Consul Change Logger pod/sidecar is active.
 ```
 
-Single-pod operation keeps runtime behavior simpler because there is no cross-pod state to coordinate.
+Single-pod operation keeps `old_value` matching deterministic because the read cache is local memory.
 
 ## 2. Build and Publish the Image
 

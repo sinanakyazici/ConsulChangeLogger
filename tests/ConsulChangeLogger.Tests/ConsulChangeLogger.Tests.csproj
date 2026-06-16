@@ -24,7 +24,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ConsulChangeLogger.Core\ConsulChangeLogger.Core.csproj" />
     <ProjectReference Include="..\..\src\ConsulChangeLogger.Proxy\ConsulChangeLogger.Proxy.csproj" />
   </ItemGroup>
 </Project>
