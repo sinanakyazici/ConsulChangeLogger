@@ -30,9 +30,12 @@ The product is intentionally narrow:
 ```mermaid
 flowchart LR
     browser["Browser"]
-    proxy["Consul Change Logger"]
+    ui["Consul UI HTML + JS<br/>running in browser"]
+    proxy["Consul Change Logger<br/>reverse proxy"]
     ldap["LDAP / Active Directory"]
-    consul["Consul UI + HTTP API"]
+    consulUi["Consul UI shell<br/>served by Consul"]
+    consulApi["Consul KV API<br/>/v1/kv/..."]
+    audit["Audit capture inside proxy"]
     cache["Read Cache"]
     outbox["Daily Outbox Files"]
     worker["Dispatch Worker"]
@@ -41,15 +44,23 @@ flowchart LR
 
     browser -->|GET /login, POST /login| proxy
     proxy -->|direct bind| ldap
-    browser -->|/ui/* and /v1/*| proxy
-    proxy -->|forward request| consul
-    consul -->|response| proxy
-    proxy -->|cache successful KV reads| cache
-    proxy -->|persist change record| outbox
+    browser -->|GET /ui/*| proxy
+    proxy -->|forward UI request| consulUi
+    consulUi -->|HTML + JS| proxy
+    proxy --> browser
+    browser --> ui
+    ui -->|GET/PUT /v1/kv/...| proxy
+    proxy -->|forward API request| consulApi
+    consulApi -->|API response| proxy
+    proxy -->|observe KV read/write/delete| audit
+    audit -->|store successful KV reads| cache
+    audit -->|persist write/delete records| outbox
     outbox -->|enqueue| worker
     worker -->|PUT document| elastic
     elastic --> kibana
 ```
+
+The important point is that audit logging happens inside the proxy while it is relaying Consul UI API traffic to Consul. The browser talks only to Consul Change Logger. Consul UI then triggers `/v1/kv/...` requests through that proxy path, and those requests are where reads are cached and writes/deletes are turned into audit records.
 
 The architecture document contains a more detailed breakdown: [docs/architecture.md](docs/architecture.md)
 
@@ -59,7 +70,7 @@ Login uses direct LDAP bind. The value entered in the login form is sent directl
 
 Typical examples:
 
-- `sinan.akyazici@pluxeegroup.com`
+- `test.user@examplecorp.com`
 - `service.account@company.com`
 
 This matches environments where applications authenticate directly against Active Directory or another LDAP server using username and password, without first looking up the user DN through a search.
@@ -90,7 +101,7 @@ Each KV write or delete can produce a document like this:
   "success": true,
   "response_code": 200,
   "client_ip": "::1",
-  "user_email": "sinan.akyazici@pluxeegroup.com",
+  "user_email": "test.user@examplecorp.com",
   "user_agent": "Mozilla/5.0",
   "request_id": "2d0d2f599db54e01bfab9f5209250e6a",
   "source_path": "/v1/kv/test/test1?dc=dc1&flags=0",
@@ -182,9 +193,9 @@ Example runtime configuration:
     "Domain": "localhost",
     "Port": 1389,
     "SecurePort": 1636,
-    "BindDn": "PLXTRTA-TST-IT001@pluxeegroup.com",
+    "BindDn": "svc-ldap-bind@examplecorp.com",
     "BindCredentials": "Passw0rd!123",
-    "SearchBase": "OU=Accounts,OU=Turkey,OU=Pluxee,DC=pluxeegroup,DC=com",
+    "SearchBase": "OU=Accounts,OU=Region,OU=Organization,DC=examplecorp,DC=com",
     "SearchFilter": "(&(objectClass=user)(objectCategory=person)",
     "UseSSL": false
   }
@@ -214,14 +225,14 @@ This environment provides:
 Test user:
 
 ```text
-sinan.akyazici@pluxeegroup.com
-PlxTest123!
+test.user@examplecorp.com
+UserPass123!
 ```
 
 Service account:
 
 ```text
-PLXTRTA-TST-IT001@pluxeegroup.com
+svc-ldap-bind@examplecorp.com
 Passw0rd!123
 ```
 
@@ -244,7 +255,7 @@ Useful Kibana filters:
 ```text
 action : "kv_write"
 kv_key : "test/test1"
-user_email : "sinan.akyazici@pluxeegroup.com"
+user_email : "test.user@examplecorp.com"
 new_value_json_validation_status : "invalid_json"
 ```
 

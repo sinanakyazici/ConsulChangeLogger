@@ -11,23 +11,36 @@ flowchart LR
     browser["Browser"]
     proxy["Consul Change Logger<br/>ASP.NET Core reverse proxy"]
     ldap["LDAP / Active Directory"]
-    consul["Consul UI + Consul HTTP API"]
+    consulUi["Consul UI shell<br/>served by Consul"]
+    consulApi["Consul HTTP API<br/>/v1/kv and other endpoints"]
+    audit["Audit capture inside proxy"]
     cache["In-memory read cache"]
     outbox["Outbox files<br/>yyyy-MM-dd/*.json"]
     worker["Background dispatch worker"]
     elastic["Elasticsearch<br/>consul-change-logger"]
     kibana["Kibana"]
 
-    browser -->|login and UI/API traffic| proxy
+    browser -->|login and all Consul traffic| proxy
     proxy -->|direct bind| ldap
-    proxy -->|allowed requests only| consul
-    consul -->|responses| proxy
-    proxy -->|store successful reads| cache
-    proxy -->|persist write/delete audit records| outbox
+    proxy -->|forward /ui/*| consulUi
+    proxy -->|forward /v1/*| consulApi
+    consulUi --> proxy
+    consulApi --> proxy
+    proxy -->|observe KV read/write/delete<br/>while forwarding| audit
+    audit -->|store successful reads| cache
+    audit -->|persist write/delete audit records| outbox
     outbox -->|enqueue| worker
     worker -->|retry until success| elastic
     elastic --> kibana
 ```
+
+The key detail is this:
+
+- Consul UI itself does not write directly to Elasticsearch
+- the browser loads the Consul UI through Consul Change Logger
+- that UI then sends KV API requests such as `GET /v1/kv/...` and `PUT /v1/kv/...`
+- those API calls pass through Consul Change Logger
+- Consul Change Logger forwards them to Consul and, at the same time, creates audit data from the request and response
 
 ## Request Path
 
@@ -62,6 +75,15 @@ The proxy copies request headers, body, and method, then writes the upstream res
 
 Non-mutating UI/API traffic passes through as normal. KV mutation traffic is additionally observed by the audit pipeline.
 
+The practical browser flow is:
+
+1. browser requests `/ui/` from Consul Change Logger
+2. Consul Change Logger forwards that to the upstream Consul UI
+3. browser receives Consul UI HTML and JavaScript through the proxy
+4. that JavaScript later calls endpoints such as `/v1/kv/...`
+5. those `/v1/kv/...` calls also go through Consul Change Logger
+6. while forwarding them to Consul, the proxy inspects them for audit purposes
+
 ### 3. Client-side JSON warning
 
 When the Consul UI HTML shell is returned, the proxy injects a small JavaScript file into the HTML response.
@@ -81,20 +103,27 @@ This is only a UI guard. The server still allows the request if the user confirm
 sequenceDiagram
     autonumber
     participant User as Browser
+    participant UI as Consul UI JS in Browser
     participant Proxy as Consul Change Logger
-    participant Consul as Consul
+    participant Consul as Consul API
     participant Cache as Read Cache
     participant Outbox as Outbox
     participant Worker as Dispatch Worker
     participant ES as Elasticsearch
 
-    User->>Proxy: GET /v1/kv/app/key?raw
+    User->>Proxy: GET /ui/
+    Proxy->>Consul: Forward /ui/ request
+    Consul-->>Proxy: UI HTML + JS
+    Proxy-->>User: Return UI
+
+    User->>UI: Edit or view KV in browser
+    UI->>Proxy: GET /v1/kv/app/key?raw
     Proxy->>Consul: Forward GET
     Consul-->>Proxy: Current value
     Proxy->>Cache: Store value by user + client + key
-    Proxy-->>User: Return response
+    Proxy-->>UI: Return response
 
-    User->>Proxy: PUT /v1/kv/app/key
+    UI->>Proxy: PUT /v1/kv/app/key
     Proxy->>Consul: Forward PUT
     Consul-->>Proxy: Write result
     Proxy->>Cache: Lookup previous read
@@ -104,7 +133,7 @@ sequenceDiagram
     Worker->>ES: PUT document
     ES-->>Worker: 2xx accepted
     Worker->>Outbox: Delete delivered file
-    Proxy-->>User: Return write result
+    Proxy-->>UI: Return write result
 ```
 
 ### Read cache
@@ -266,8 +295,8 @@ This lab is for development and verification:
 
 Current seeded identities:
 
-- `PLXTRTA-TST-IT001@pluxeegroup.com`
-- `sinan.akyazici@pluxeegroup.com`
+- `svc-ldap-bind@examplecorp.com`
+- `test.user@examplecorp.com`
 
 ## Limits
 

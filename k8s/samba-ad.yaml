@@ -12,7 +12,7 @@ type: Opaque
 stringData:
   ADMINPASS: Passw0rd!123
   SERVICE_PASS: Passw0rd!123
-  USER_PASS: "PlxTest123!"
+  USER_PASS: "UserPass123!"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -24,36 +24,36 @@ data:
     #!/bin/sh
     set -eu
 
-    BASE_DN="DC=pluxeegroup,DC=com"
-    ACCOUNTS_OU="OU=Accounts,OU=Turkey,OU=Pluxee,${BASE_DN}"
-    SERVICE_USER="PLXTRTA-TST-IT001"
-    TEST_USER="sakyazici"
+    BASE_DN="DC=examplecorp,DC=com"
+    ACCOUNTS_OU="OU=Accounts,OU=Region,OU=Organization,${BASE_DN}"
+    SERVICE_USER="svc-ldap-bind"
+    TEST_USER="testuser"
 
-    samba-tool ou create "OU=Pluxee,${BASE_DN}" >/dev/null 2>&1 || true
-    samba-tool ou create "OU=Turkey,OU=Pluxee,${BASE_DN}" >/dev/null 2>&1 || true
+    samba-tool ou create "OU=Organization,${BASE_DN}" >/dev/null 2>&1 || true
+    samba-tool ou create "OU=Region,OU=Organization,${BASE_DN}" >/dev/null 2>&1 || true
     samba-tool ou create "${ACCOUNTS_OU}" >/dev/null 2>&1 || true
 
     samba-tool user create "${SERVICE_USER}" "${SERVICE_PASS}" \
-      --userou="OU=Accounts,OU=Turkey,OU=Pluxee" \
-      --given-name="PLXTRTA" \
-      --surname="TST-IT001" \
-      --mail-address="${SERVICE_USER}@pluxeegroup.com" >/dev/null 2>&1 || true
+      --userou="OU=Accounts,OU=Region,OU=Organization" \
+      --given-name="Service" \
+      --surname="Bind" \
+      --mail-address="${SERVICE_USER}@examplecorp.com" >/dev/null 2>&1 || true
 
     samba-tool user create "${TEST_USER}" "${USER_PASS}" \
-      --userou="OU=Accounts,OU=Turkey,OU=Pluxee" \
-      --given-name="Sinan" \
-      --surname="AKYAZICI" \
-      --mail-address="sinan.akyazici@pluxeegroup.com" >/dev/null 2>&1 || true
+      --userou="OU=Accounts,OU=Region,OU=Organization" \
+      --given-name="Test" \
+      --surname="User" \
+      --mail-address="test.user@examplecorp.com" >/dev/null 2>&1 || true
     samba-tool user setpassword "${TEST_USER}" --newpassword="${USER_PASS}" >/dev/null 2>&1 || true
 
     cat >/tmp/test-user.ldif <<EOF
-    dn: CN=Sinan AKYAZICI,OU=Accounts,OU=Turkey,OU=Pluxee,${BASE_DN}
+    dn: CN=Test User,OU=Accounts,OU=Region,OU=Organization,${BASE_DN}
     changetype: modify
     replace: userPrincipalName
-    userPrincipalName: sinan.akyazici@pluxeegroup.com
+    userPrincipalName: test.user@examplecorp.com
     -
     replace: mail
-    mail: sinan.akyazici@pluxeegroup.com
+    mail: test.user@examplecorp.com
     EOF
     ldbmodify -H /var/lib/samba/private/sam.ldb /tmp/test-user.ldif >/dev/null 2>&1 || true
 ---
@@ -114,9 +114,9 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: REALM
-              value: PLUXEEGROUP.COM
+              value: EXAMPLECORP.COM
             - name: DOMAIN
-              value: PLX
+              value: EXC
             - name: ADMINPASS
               valueFrom:
                 secretKeyRef:
