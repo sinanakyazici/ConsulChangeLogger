@@ -71,10 +71,11 @@ The intended Kubernetes install flow is:
 
 1. install the Helm chart
 2. seed runtime config into Consul KV
-3. manually patch the existing Consul workload to add the sidecar
-4. manually patch the existing `consul-ui` Service so browser traffic goes to port `8080`
+3. patch the existing Consul workload to add the sidecar
+4. patch the existing `consul-ui` Service so browser traffic goes to the sidecar
+5. verify health, login, and audit delivery
 
-The Helm chart creates only the product-owned PVC and prints patch instructions in `NOTES.txt`.
+The Helm chart intentionally creates only the product-owned PVC and prints patch guidance in `NOTES.txt`. It does not install or mutate the existing Consul workload for you.
 
 Install example:
 
@@ -88,6 +89,12 @@ Upgrade example:
 helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
 ```
 
+Dry-run example against the published OCI chart:
+
+```powershell
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul --create-namespace --dry-run --debug
+```
+
 The sidecar bootstrap contract is environment-variable based:
 
 - `CONSUL_UPSTREAM_URL`
@@ -95,6 +102,43 @@ The sidecar bootstrap contract is environment-variable based:
 - optional `CONSUL_HTTP_TOKEN`
 
 All remaining runtime settings are read from Consul KV.
+
+### Current Rollout Steps
+
+For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` shape used in this repository, the rollout looks like this:
+
+1. install the product-owned PVC:
+
+```powershell
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.0 -n consul
+```
+
+2. seed runtime config into:
+
+```text
+consul-change-logger/appsettings.json
+```
+
+3. patch the existing Consul workload:
+
+```powershell
+kubectl patch statefulset consul-server -n consul --patch-file .\k8s\consul-server-sidecar-patch.yaml
+```
+
+4. patch the existing browser-facing Service:
+
+```powershell
+kubectl patch service consul-ui -n consul --patch-file .\k8s\consul-ui-service-patch.yaml
+```
+
+5. verify rollout:
+
+```powershell
+kubectl rollout status statefulset/consul-server -n consul
+kubectl port-forward svc/consul-ui -n consul 8080:80
+curl http://localhost:8080/health/live
+curl http://localhost:8080/health/ready
+```
 
 ## End-to-End Flow
 
@@ -292,6 +336,24 @@ Notes:
 - `SearchFilter` is kept for compatibility and future lookup scenarios, but direct bind authentication does not require it during login.
 - `BindDn` and `BindCredentials` are not used for login in direct bind mode. They are available for future LDAP search or enrichment scenarios.
 
+## Runtime Verification
+
+After sidecar rollout, the minimum useful checks are:
+
+1. open the existing Consul URL and confirm the login screen appears
+2. sign in with LDAP
+3. read a KV key
+4. modify and save that KV key
+5. confirm the change appears in Elasticsearch and Kibana
+
+Expected behavior:
+
+- `/health/live` returns live
+- `/health/ready` returns ready
+- a KV read followed by a KV write can populate best-effort `old_value`
+- invalid JSON-like values trigger a browser warning before save
+- successful audit events are written to the `consul-change-logger` index
+
 ## Local AD Test Environment
 
 This repository now includes a Samba-based local Active Directory test environment for Kubernetes:
@@ -376,6 +438,8 @@ Supporting examples and notes:
 - [k8s/sidecar-snippet.yaml](k8s/sidecar-snippet.yaml)
 - [k8s/service-example.yaml](k8s/service-example.yaml)
 - [k8s/pvc-example.yaml](k8s/pvc-example.yaml)
+- [k8s/consul-server-sidecar-patch.yaml](k8s/consul-server-sidecar-patch.yaml)
+- [k8s/consul-ui-service-patch.yaml](k8s/consul-ui-service-patch.yaml)
 - [k8s/appsettings.consul.example.json](k8s/appsettings.consul.example.json)
 - [k8s/consul-config-seed.example.sh](k8s/consul-config-seed.example.sh)
 - [docs/kubernetes-onboarding-guide.md](docs/kubernetes-onboarding-guide.md)
@@ -398,9 +462,10 @@ dotnet build ConsulChangeLogger.slnx --configuration Release
 
 ```text
 src/ConsulChangeLogger.Proxy     Reverse proxy, auth, shared models, audit pipeline
-tests/ConsulChangeLogger.Tests   Lightweight executable tests
-k8s                              Kubernetes examples and local AD lab manifests
+tests/ConsulChangeLogger.Tests   xUnit tests for core helpers and audit flow support code
+k8s                              Kubernetes examples, rollout patches, and local AD lab manifests
 docs                             Architecture and onboarding docs
+chart/consul-change-logger       Helm chart for product-owned PVC and rollout instructions
 ```
 
 ## License

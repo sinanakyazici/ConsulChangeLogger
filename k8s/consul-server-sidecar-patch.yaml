@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: consul-server
+  namespace: consul
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: consul-change-logger
+          image: ghcr.io/sinanakyazici/consul-change-logger:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            runAsGroup: 1654
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: logger-http
+              containerPort: 8080
+          env:
+            - name: CONSUL_UPSTREAM_URL
+              value: "http://127.0.0.1:8500"
+            - name: CONSUL_CONFIG_KEY
+              value: "consul-change-logger/appsettings.json"
+          volumeMounts:
+            - name: change-log-outbox
+              mountPath: /var/lib/consul-change-logger/outbox
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: logger-http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: logger-http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 75
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: logger-http
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: change-log-outbox
+          persistentVolumeClaim:
+            claimName: consul-change-logger-outbox
