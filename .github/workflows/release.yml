@@ -1,56 +1,77 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
 
 permissions:
   contents: write
   packages: write
+  actions: read
 
 jobs:
-  release:
-    name: Build and publish release artifacts
+  detect-release:
+    name: Detect tagged CI run
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      tag: ${{ steps.detect.outputs.tag }}
+      version: ${{ steps.detect.outputs.version }}
+      image: ${{ steps.detect.outputs.image }}
+      chart: ${{ steps.detect.outputs.chart }}
 
     steps:
-      - name: Checkout
+      - name: Checkout triggering commit
         uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Derive version metadata
-        id: version
+      - name: Detect semantic version tag
+        id: detect
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [[ -z "$TAG" ]]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           VERSION="${TAG#v}"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/sinanakyazici/consul-change-logger" >> "$GITHUB_OUTPUT"
           echo "chart=oci://ghcr.io/sinanakyazici/charts" >> "$GITHUB_OUTPUT"
 
-      - name: Restore
-        run: dotnet restore ConsulChangeLogger.slnx
+  release:
+    name: Publish release artifacts
+    needs:
+      - detect-release
+    if: needs.detect-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
 
-      - name: Build
-        run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
+    steps:
+      - name: Checkout triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
-      - name: Test
-        run: dotnet test ConsulChangeLogger.slnx --configuration Release --no-build
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
 
-      - name: Helm lint
-        run: helm lint chart/consul-change-logger
-
-      - name: Helm template
-        run: helm template consul-change-logger chart/consul-change-logger
+      - name: Download CI release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bundle-${{ needs.detect-release.outputs.version }}
+          path: dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -59,15 +80,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push container image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: src/ConsulChangeLogger.Proxy/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.tag }}
-            ${{ steps.version.outputs.image }}:latest
+      - name: Load and push container image
+        shell: bash
+        run: |
+          docker load -i dist/consul-change-logger-image.tar
+          docker push "${{ needs.detect-release.outputs.image }}:${{ needs.detect-release.outputs.tag }}"
+          docker push "${{ needs.detect-release.outputs.image }}:latest"
 
       - name: Helm registry login
         shell: bash
@@ -76,25 +94,16 @@ jobs:
             --username "${{ github.actor }}" \
             --password-stdin
 
-      - name: Package Helm chart
-        shell: bash
-        run: |
-          mkdir -p dist
-          helm package chart/consul-change-logger \
-            --version "${{ steps.version.outputs.version }}" \
-            --app-version "${{ steps.version.outputs.version }}" \
-            --destination dist
-
       - name: Push Helm chart to GHCR OCI
         shell: bash
         run: |
-          helm push "dist/consul-change-logger-${{ steps.version.outputs.version }}.tgz" "${{ steps.version.outputs.chart }}"
+          helm push "dist/consul-change-logger-${{ needs.detect-release.outputs.version }}.tgz" "${{ needs.detect-release.outputs.chart }}"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.detect-release.outputs.tag }}
+          name: ${{ needs.detect-release.outputs.tag }}
           generate_release_notes: true
           files: |
-            dist/consul-change-logger-${{ steps.version.outputs.version }}.tgz
+            dist/consul-change-logger-${{ needs.detect-release.outputs.version }}.tgz
