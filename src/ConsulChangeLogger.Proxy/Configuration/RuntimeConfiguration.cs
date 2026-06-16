@@ -21,7 +21,6 @@ internal sealed record ChangeLogConfiguration
 {
     public string OutboxPath { get; init; } = "/var/lib/consul-change-logger/outbox";
     public string DataProtectionPath { get; init; } = ".local-data/data-protection";
-    public int ReadMatchWindowSeconds { get; init; } = 1800;
     public int MaxBodyBytes { get; init; } = 8192;
     public int QueueCapacity { get; init; } = 1000;
     public int RetentionDays { get; init; } = 30;

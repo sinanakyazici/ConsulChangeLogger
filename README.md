@@ -18,7 +18,6 @@ The product is intentionally narrow:
 
 - Authenticates browser users with LDAP before they can access Consul UI or the Consul API through the proxy.
 - Proxies Consul UI assets and API requests to the upstream Consul endpoint.
-- Captures KV reads to build a best-effort `old_value`.
 - Captures KV writes and deletes as audit records.
 - Writes each audit record to a local outbox file before Elasticsearch delivery.
 - Retries Elasticsearch delivery until the record is accepted.
@@ -36,7 +35,6 @@ flowchart LR
     consulUi["Consul UI shell<br/>served by Consul"]
     consulApi["Consul KV API<br/>/v1/kv/..."]
     audit["Audit capture inside proxy"]
-    cache["Read Cache"]
     outbox["Daily Outbox Files"]
     worker["Dispatch Worker"]
     elastic["Elasticsearch"]
@@ -53,14 +51,13 @@ flowchart LR
     proxy -->|forward API request| consulApi
     consulApi -->|API response| proxy
     proxy -->|observe KV read/write/delete| audit
-    audit -->|store successful KV reads| cache
     audit -->|persist write/delete records| outbox
     outbox -->|enqueue| worker
     worker -->|PUT document| elastic
     elastic --> kibana
 ```
 
-The important point is that audit logging happens inside the proxy while it is relaying Consul UI API traffic to Consul. The browser talks only to Consul Change Logger. Consul UI then triggers `/v1/kv/...` requests through that proxy path, and those requests are where reads are cached and writes/deletes are turned into audit records.
+The important point is that audit logging happens inside the proxy while it is relaying Consul UI API traffic to Consul. The browser talks only to Consul Change Logger. Consul UI then triggers `/v1/kv/...` requests through that proxy path, and those requests are where writes and deletes are turned into audit records.
 
 The architecture document contains a more detailed breakdown: [docs/architecture.md](docs/architecture.md)
 
@@ -85,13 +82,11 @@ Each KV write or delete can produce a document like this:
   "event_id": "2d0d2f599db54e01bfab9f5209250e6a",
   "action": "kv_write",
   "kv_key": "test/test1",
-  "old_value": "{ \"a\" : 1 }",
-  "old_value_looks_like_json": true,
-  "old_value_json_validation_status": "valid_json",
-  "old_value_is_valid_json": true,
+  "old_value": null,
+  "old_value_looks_like_json": false,
+  "old_value_json_validation_status": "not_json",
+  "old_value_is_valid_json": null,
   "old_value_json_error": null,
-  "old_value_seen_at": "2026-06-16T10:02:00Z",
-  "old_value_read_request_id": "ed27d99ba89e49ed9440a7638caabea2",
   "new_value": "{ \"a\" : 1 }",
   "new_value_looks_like_json": true,
   "new_value_json_validation_status": "valid_json",
@@ -146,7 +141,6 @@ The proxy logs:
 - LDAP bind success and failure
 - proxied Consul requests
 - upstream response status and byte counts
-- KV read cache behavior
 - audit record creation
 - outbox writes
 - queue and dispatch activity
@@ -184,7 +178,6 @@ Example runtime configuration:
   "ChangeLog": {
     "OutboxPath": ".local-data/outbox",
     "DataProtectionPath": ".local-data/data-protection",
-    "ReadMatchWindowSeconds": 1800,
     "MaxBodyBytes": 8192,
     "QueueCapacity": 1000,
     "RetentionDays": 30

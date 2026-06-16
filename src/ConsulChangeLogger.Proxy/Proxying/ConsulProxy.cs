@@ -23,18 +23,15 @@ internal sealed class ConsulProxy
 
     private readonly HttpContext context;
     private readonly IHttpClientFactory httpClientFactory;
-    private readonly ReadCache readCache;
     private readonly ChangeRecordSink changeRecordSink;
 
     public ConsulProxy(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
-        ReadCache readCache,
         ChangeRecordSink changeRecordSink)
     {
         this.context = context;
         this.httpClientFactory = httpClientFactory;
-        this.readCache = readCache;
         this.changeRecordSink = changeRecordSink;
     }
 
@@ -220,20 +217,11 @@ internal sealed class ConsulProxy
         var clientIp = context.Connection.RemoteIpAddress?.ToString();
         var userEmail = context.User.FindFirstValue(ClaimTypes.Email) ?? context.User.Identity?.Name;
         var userAgent = context.Request.Headers.UserAgent.ToString();
-        var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
-        var responseBody = Encoding.UTF8.GetString(responseBodyBytes);
         var responseCode = (int)upstreamResponse.StatusCode;
 
-        if (action == "kv_read" && ConsulKvChangeHelpers.IsSuccess(responseCode))
+        if (action == "kv_read")
         {
-            var oldValue = ConsulKvChangeHelpers.ExtractReadValue(sourcePath, responseBody);
-            readCache.Store(identity, oldValue, timestamp, requestId);
-            Log.Debug(
-                "Cached KV read for {Key} by {Username}. RequestId={RequestId} OldValuePresent={OldValuePresent}",
-                kvKey,
-                userEmail,
-                requestId,
-                oldValue is not null);
+            Log.Debug("Skipping audit capture for KV read {Path} because read tracking is disabled", sourcePath);
             return;
         }
 
@@ -243,8 +231,7 @@ internal sealed class ConsulProxy
             return;
         }
 
-        var read = readCache.Get(identity);
-        var oldValueJson = ConsulKvChangeHelpers.InspectJson(read?.Value);
+        var oldValueJson = ConsulKvChangeHelpers.InspectJson(null);
         var newValue = action == "kv_write" ? requestBody : null;
         var newValueJson = ConsulKvChangeHelpers.InspectJson(newValue);
         var changeRecord = new ChangeRecord
@@ -253,13 +240,11 @@ internal sealed class ConsulProxy
             EventId = eventId,
             Action = action,
             KvKey = kvKey,
-            OldValue = read?.Value,
+            OldValue = null,
             OldValueLooksLikeJson = oldValueJson.LooksLikeJson,
             OldValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(oldValueJson),
             OldValueIsValidJson = oldValueJson.IsValidJson,
             OldValueJsonError = oldValueJson.Error,
-            OldValueSeenAt = read?.SeenAt,
-            OldValueReadRequestId = read?.RequestId,
             NewValue = newValue,
             NewValueLooksLikeJson = newValueJson.LooksLikeJson,
             NewValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(newValueJson),
