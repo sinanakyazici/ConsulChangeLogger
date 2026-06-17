@@ -42,4 +42,31 @@ public sealed class BootstrapOptionsTests
         Assert.Equal("consul/appsettings.json", options.ConfigKey);
         Assert.Equal("section-token", options.ConsulHttpToken);
     }
+
+    [Fact]
+    public void FromConfiguration_UsesAuthenticationFlag_WhenExplicitlyDisabled()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AUTHENTICATION"] = "false"
+            })
+            .Build();
+
+        var options = BootstrapOptions.FromConfiguration(configuration);
+
+        Assert.False(options.Authentication);
+    }
+
+    [Fact]
+    public void FromConfiguration_DefaultsAuthenticationToEnabled()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var options = BootstrapOptions.FromConfiguration(configuration);
+
+        Assert.True(options.Authentication);
+    }
 }

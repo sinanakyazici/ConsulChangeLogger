@@ -88,6 +88,12 @@ Log.Information(
 
 using (var scope = app.Services.CreateScope())
 {
+    if (bootstrapOptions.Authentication!.Value)
+    {
+        var ldapAuthenticator = scope.ServiceProvider.GetRequiredService<LdapAuthenticator>();
+        await ldapAuthenticator.WaitForAvailabilityAsync(app.Lifetime.ApplicationStopping);
+    }
+
     var sink = scope.ServiceProvider.GetRequiredService<ChangeRecordSink>();
     await sink.WaitForElasticsearchAsync(app.Lifetime.ApplicationStopping);
     await sink.EnsureIndexAsync(app.Lifetime.ApplicationStopping);

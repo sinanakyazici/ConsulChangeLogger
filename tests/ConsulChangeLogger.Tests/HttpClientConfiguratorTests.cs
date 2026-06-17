@@ -20,6 +20,7 @@ public sealed class HttpClientConfiguratorTests
         HttpClientConfigurator.ConfigureConsul(client, options);
 
         Assert.Equal(new Uri("http://127.0.0.1:8500"), client.BaseAddress);
+        Assert.Equal(TimeSpan.FromSeconds(95), client.Timeout);
         Assert.Equal("token-123", client.DefaultRequestHeaders.GetValues("X-Consul-Token").Single());
     }
 

@@ -79,6 +79,38 @@ internal sealed class ConsulProxy
                 context.Request.QueryString,
                 context.User.Identity?.Name);
         }
+        catch (TaskCanceledException) when (!context.RequestAborted.IsCancellationRequested)
+        {
+            Log.Warning(
+                "Consul upstream timed out for {Method} {Path}{Query} after {TimeoutSeconds} seconds. User={Username}",
+                context.Request.Method,
+                context.Request.Path,
+                context.Request.QueryString,
+                95,
+                context.User.Identity?.Name);
+
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+                await context.Response.WriteAsync("Consul upstream timed out.", context.RequestAborted);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Log.Warning(
+                ex,
+                "Consul upstream request failed for {Method} {Path}{Query} for {Username}",
+                context.Request.Method,
+                context.Request.Path,
+                context.Request.QueryString,
+                context.User.Identity?.Name);
+
+            if (!context.Response.HasStarted)
+            {
+                context.Response.StatusCode = StatusCodes.Status502BadGateway;
+                await context.Response.WriteAsync("Consul upstream request failed.", context.RequestAborted);
+            }
+        }
         catch (IOException ex) when (IsClientDisconnect(ex))
         {
             Log.Debug(

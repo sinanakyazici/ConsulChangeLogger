@@ -51,8 +51,9 @@ When a semantic version tag such as `v1.2.3` is pushed, the release workflow pub
 
 Relevant workflows:
 
-- [CI](.github/workflows/ci.yml)
-- [Release](.github/workflows/release.yml)
+- [CI-main](.github/workflows/ci.yml)
+- [CI-release](.github/workflows/release-ci.yml)
+- [Release-publish](.github/workflows/release.yml)
 
 ## What It Does
 
@@ -80,19 +81,19 @@ The Helm chart intentionally creates only the product-owned PVC and prints patch
 Install example:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
 ```
 
 Upgrade example:
 
 ```powershell
-helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n consul
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
 ```
 
 Dry-run example against the published OCI chart:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n consul --create-namespace --dry-run --debug
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul --create-namespace --dry-run --debug
 ```
 
 The sidecar bootstrap contract is environment-variable based:
@@ -100,12 +101,14 @@ The sidecar bootstrap contract is environment-variable based:
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
 - optional `CONSUL_HTTP_TOKEN`
+- `AUTHENTICATION` (`true` or `false`)
 
 The application also accepts ASP.NET configuration-style keys as a fallback:
 
 - `ConsulConfiguration__UpstreamUrl`
 - `ConsulConfiguration__ConfigKey`
 - `ConsulConfiguration__HttpToken`
+- `Authentication`
 
 All remaining runtime settings are read from Consul KV.
 
@@ -116,7 +119,7 @@ For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` sha
 1. install the product-owned PVC:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
 ```
 
 2. seed runtime config into:
@@ -196,6 +199,13 @@ Typical examples:
 
 This matches environments where applications authenticate directly against Active Directory or another LDAP server using username and password, without first looking up the user DN through a search.
 
+`AUTHENTICATION=false` disables the login screen entirely. In that mode:
+
+- `/login` redirects to `/ui/`
+- `/logout` redirects to `/ui/`
+- all requests are treated as authenticated
+- audit records use `authentication-disabled` as the user identity
+
 ## Audit Record
 
 Each KV write or delete can produce a document like this:
@@ -265,6 +275,8 @@ Browser-side warning:
 
 The proxy still allows the write if the user confirms.
 
+If an authenticated browser session expires while Consul UI is making background `fetch` or `XMLHttpRequest` calls, the injected client script now redirects the full page back to `/login`.
+
 ## Logging
 
 Console logging is intentionally verbose in the current build so the whole request path can be followed during testing.
@@ -282,6 +294,9 @@ The proxy logs:
 - queue and dispatch activity
 - Elasticsearch index setup and document delivery
 - invalid JSON detection
+- Consul startup availability waits
+- LDAP startup availability waits when authentication is enabled
+- clean upstream timeout / bad gateway warnings for Consul proxy requests
 
 ## Configuration
 
@@ -292,7 +307,8 @@ Bootstrap configuration defaults exist in `src/ConsulChangeLogger.Proxy/appsetti
   "ConsulConfiguration": {
     "UpstreamUrl": "http://localhost:8500",
     "ConfigKey": "consul-change-logger/appsettings.local.json"
-  }
+  },
+  "Authentication": true
 }
 ```
 
@@ -302,6 +318,7 @@ Production bootstrap contract:
 CONSUL_UPSTREAM_URL
 CONSUL_CONFIG_KEY
 CONSUL_HTTP_TOKEN (optional)
+AUTHENTICATION (true or false)
 ```
 
 Fallback binding keys:
@@ -310,6 +327,7 @@ Fallback binding keys:
 ConsulConfiguration__UpstreamUrl
 ConsulConfiguration__ConfigKey
 ConsulConfiguration__HttpToken
+Authentication
 ```
 
 Runtime configuration is read from the Consul KV key referenced by `CONSUL_CONFIG_KEY`.
@@ -336,7 +354,7 @@ Example runtime configuration:
     "RetentionDays": 30
   },
   "LdapConfiguration": {
-    "Domain": "localhost",
+    "Domain": "127.0.0.1",
     "Port": 1389,
     "SecurePort": 1636,
     "BindDn": "svc-ldap-bind@examplecorp.com",
@@ -352,6 +370,8 @@ Notes:
 
 - `SearchFilter` is currently not used during direct bind login. It remains in the runtime contract for compatibility and future lookup scenarios.
 - `BindDn` and `BindCredentials` are currently not used during direct bind login.
+- For local Windows testing, prefer `127.0.0.1` over `localhost` for LDAP. In this repository's local lab, `localhost` can resolve to IPv6 first and fail while `127.0.0.1` works for both LDAP and LDAPS.
+- At startup the proxy now waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
 
 ## Runtime Verification
 
@@ -402,8 +422,8 @@ Passw0rd!123
 
 If you are using the local port-forward setup from this workspace, the endpoints are:
 
-- LDAP: `localhost:1389`
-- LDAPS: `localhost:1636`
+- LDAP: `127.0.0.1:1389`
+- LDAPS: `127.0.0.1:1636`
 - LDAP UI: `http://localhost:9081/`
 
 ## Elasticsearch and Kibana
