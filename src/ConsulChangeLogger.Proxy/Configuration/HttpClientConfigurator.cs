@@ -7,8 +7,8 @@ internal static class HttpClientConfigurator
 {
     public static void ConfigureConsul(HttpClient client, BootstrapOptions options)
     {
-        client.BaseAddress = new Uri(options.ConsulUpstreamUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
+        client.BaseAddress = new Uri(options.ConsulUpstreamUrl!);
+        client.Timeout = TimeSpan.FromSeconds(95);
 
         if (!string.IsNullOrWhiteSpace(options.ConsulHttpToken))
         {

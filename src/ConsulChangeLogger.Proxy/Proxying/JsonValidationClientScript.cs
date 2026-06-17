@@ -9,6 +9,25 @@ internal static class JsonValidationClientScript
         (() => {
           const warningMessage =
             "Girilen deger JSON gibi gorunuyor ancak gecerli degil.\n\nYine de kaydetmek istiyor musunuz?";
+          let redirectingToLogin = false;
+
+          function isLoginUrl(url) {
+            try {
+              const resolved = new URL(url, window.location.origin);
+              return resolved.pathname === "/login";
+            } catch {
+              return false;
+            }
+          }
+
+          function redirectToLogin() {
+            if (redirectingToLogin || window.location.pathname === "/login") {
+              return;
+            }
+
+            redirectingToLogin = true;
+            window.location.assign("/login");
+          }
 
           function inspectValue(value) {
             if (typeof value !== "string") {
@@ -60,7 +79,12 @@ internal static class JsonValidationClientScript
               throw new DOMException("JSON validation cancelled by user.", "AbortError");
             }
 
-            return originalFetch(input, init);
+            const response = await originalFetch(input, init);
+            if (response.redirected && isLoginUrl(response.url)) {
+              redirectToLogin();
+            }
+
+            return response;
           };
 
           const open = XMLHttpRequest.prototype.open;
@@ -69,6 +93,13 @@ internal static class JsonValidationClientScript
           XMLHttpRequest.prototype.open = function(method, url) {
             this.__cclMethod = method;
             this.__cclUrl = url;
+
+             this.addEventListener("load", function() {
+              if (isLoginUrl(this.responseURL)) {
+                redirectToLogin();
+              }
+            });
+
             return open.apply(this, arguments);
           };
 
