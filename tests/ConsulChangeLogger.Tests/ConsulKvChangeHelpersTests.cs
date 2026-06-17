@@ -23,6 +23,15 @@ public sealed class ConsulKvChangeHelpersTests
     }
 
     [Theory]
+    [InlineData("app/config/", true)]
+    [InlineData("app/config/value", false)]
+    [InlineData("", false)]
+    public void IsFolderKey_ReturnsExpectedResult(string key, bool expected)
+    {
+        Assert.Equal(expected, ConsulKvChangeHelpers.IsFolderKey(key));
+    }
+
+    [Theory]
     [InlineData("GET", "kv_read")]
     [InlineData("PUT", "kv_write")]
     [InlineData("DELETE", "kv_delete")]

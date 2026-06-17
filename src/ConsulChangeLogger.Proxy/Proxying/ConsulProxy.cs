@@ -189,6 +189,11 @@ internal sealed class ConsulProxy
 
     private async Task<MutationPrefetchState> PrefetchOldValueForMutationAsync()
     {
+        if (context.User.Identity?.IsAuthenticated != true)
+        {
+            return new MutationPrefetchState(false, false);
+        }
+
         var sourcePath = context.Request.Path + context.Request.QueryString;
         var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
         if (action is not ("kv_write" or "kv_delete"))
@@ -321,6 +326,12 @@ internal sealed class ConsulProxy
 
     private async Task CaptureChangeRecordAsync(string requestBody, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes, MutationPrefetchState mutationPrefetchState)
     {
+        if (context.User.Identity?.IsAuthenticated != true)
+        {
+            Log.Debug("Skipping audit capture for unauthenticated request {Method} {Path}", context.Request.Method, context.Request.Path);
+            return;
+        }
+
         var sourcePath = context.Request.Path + context.Request.QueryString;
         if (!ConsulKvChangeHelpers.IsKvPath(sourcePath))
         {
@@ -347,6 +358,7 @@ internal sealed class ConsulProxy
         var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
         var responseBody = Encoding.UTF8.GetString(responseBodyBytes);
         var responseCode = (int)upstreamResponse.StatusCode;
+        var isFolder = ConsulKvChangeHelpers.IsFolderKey(kvKey);
 
         if (action == "kv_read" && ConsulKvChangeHelpers.IsSuccess(responseCode))
         {
@@ -380,6 +392,7 @@ internal sealed class ConsulProxy
             EventId = eventId,
             Action = action,
             KvKey = kvKey,
+            IsFolder = isFolder,
             OldValue = read?.Value,
             OldValueLooksLikeJson = oldValueJson.LooksLikeJson,
             OldValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(oldValueJson),

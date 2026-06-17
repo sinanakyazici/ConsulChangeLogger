@@ -107,14 +107,15 @@ app.MapGet(JsonValidationClientScript.Path, () =>
 });
 app.Map("/{**path}", async context =>
 {
-    if (context.User.Identity?.IsAuthenticated != true)
+    var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
+    if (!isAuthenticated && RequestPathPolicy.RequiresAuthenticatedUiSession(context.Request.Path))
     {
         Log.Debug("Unauthenticated request for {Path}; redirecting to /login", context.Request.Path);
         context.Response.Redirect("/login");
         return;
     }
 
-    if (context.Request.Path == "/")
+    if (isAuthenticated && context.Request.Path == "/")
     {
         Log.Debug("Authenticated root request; redirecting to /ui/");
         context.Response.Redirect("/ui/");

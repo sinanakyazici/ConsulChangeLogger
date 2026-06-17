@@ -10,6 +10,7 @@ internal static class JsonValidationClientScript
           const warningMessage =
             "Girilen deger JSON gibi gorunuyor ancak gecerli degil.\n\nYine de kaydetmek istiyor musunuz?";
           let redirectingToLogin = false;
+          let allowNextKvPutUntil = 0;
 
           function isLoginUrl(url) {
             try {
@@ -27,6 +28,19 @@ internal static class JsonValidationClientScript
 
             redirectingToLogin = true;
             window.location.assign("/login");
+          }
+
+          function allowNextKvPut() {
+            allowNextKvPutUntil = Date.now() + 1500;
+          }
+
+          function consumeAllowedKvPut() {
+            if (Date.now() <= allowNextKvPutUntil) {
+              allowNextKvPutUntil = 0;
+              return true;
+            }
+
+            return false;
           }
 
           function inspectValue(value) {
@@ -60,7 +74,96 @@ internal static class JsonValidationClientScript
             }
           }
 
+          function readCandidateValue(node) {
+            if (!node) {
+              return "";
+            }
+
+            if (typeof node.value === "string") {
+              return node.value;
+            }
+
+            if (node.matches?.(".cm-content")) {
+              return node.textContent || "";
+            }
+
+            if (node.isContentEditable) {
+              return node.innerText || node.textContent || "";
+            }
+
+            return node.textContent || "";
+          }
+
+          function findEditorValue(startNode) {
+            const roots = [
+              startNode?.closest?.("form"),
+              startNode?.closest?.("[data-test-kv-editor]"),
+              startNode?.closest?.("[data-test-view='kv/edit']"),
+              document
+            ].filter(Boolean);
+
+            const selectors = [
+              "textarea",
+              "input[type='text']",
+              "input:not([type])",
+              "[contenteditable='true']",
+              ".cm-content",
+              ".CodeMirror textarea",
+              ".CodeMirror-code"
+            ];
+
+            for (const root of roots) {
+              const values = selectors
+                .flatMap(selector => Array.from(root.querySelectorAll(selector)))
+                .map(readCandidateValue)
+                .filter(value => typeof value === "string" && value.trim().length > 0)
+                .sort((left, right) => right.length - left.length);
+
+              if (values.length > 0) {
+                return values[0];
+              }
+            }
+
+            return "";
+          }
+
+          function isSaveActionElement(target) {
+            const action = target?.closest?.("button, [role='button'], input[type='submit'], input[type='button']");
+            if (!action) {
+              return false;
+            }
+
+            const label = (action.value || action.textContent || "").trim().toLowerCase();
+            return label === "save";
+          }
+
+          function handleUiSaveAttempt(target, event) {
+            if (!isSaveActionElement(target)) {
+              return;
+            }
+
+            const editorValue = findEditorValue(target);
+            const inspection = inspectValue(editorValue);
+            if (!inspection.looksLikeJson || inspection.isValidJson !== false) {
+              allowNextKvPut();
+              return;
+            }
+
+            if (!window.confirm(warningMessage)) {
+              event.preventDefault();
+              event.stopImmediatePropagation();
+              target?.focus?.();
+              return;
+            }
+
+            allowNextKvPut();
+          }
+
           function confirmInvalidJson(body) {
+            if (consumeAllowedKvPut()) {
+              return true;
+            }
+
             const inspection = inspectValue(body);
             if (!inspection.looksLikeJson || inspection.isValidJson !== false) {
               return true;
@@ -68,6 +171,14 @@ internal static class JsonValidationClientScript
 
             return window.confirm(warningMessage);
           }
+
+          document.addEventListener("click", event => {
+            handleUiSaveAttempt(event.target, event);
+          }, true);
+
+          document.addEventListener("submit", event => {
+            handleUiSaveAttempt(event.target, event);
+          }, true);
 
           const originalFetch = window.fetch.bind(window);
           window.fetch = async function(input, init) {

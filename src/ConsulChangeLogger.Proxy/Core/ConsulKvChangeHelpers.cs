@@ -30,6 +30,9 @@ public static class ConsulKvChangeHelpers
             : string.Empty;
     }
 
+    public static bool IsFolderKey(string? kvKey) =>
+        !string.IsNullOrWhiteSpace(kvKey) && kvKey.EndsWith("/", StringComparison.Ordinal);
+
     public static string KvAction(string method) => method.ToUpperInvariant() switch
     {
         "GET" => "kv_read",

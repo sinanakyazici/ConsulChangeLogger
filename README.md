@@ -197,6 +197,7 @@ Each KV write or delete can produce a document like this:
   "event_id": "2d0d2f599db54e01bfab9f5209250e6a",
   "action": "kv_write",
   "kv_key": "test/test1",
+  "is_folder": false,
   "old_value": "{ \"a\" : 1 }",
   "old_value_looks_like_json": true,
   "old_value_json_validation_status": "valid_json",
@@ -226,6 +227,7 @@ Each KV write or delete can produce a document like this:
 Current behavior:
 
 - `old_value` is best-effort
+- `is_folder=true` when the Consul key ends with `/`
 - the proxy caches the most recent successful KV read per user/client/key identity
 - if no matching cached read exists, the proxy can prefetch the current value before a single-key write or delete
 - if a matching read is not found, `old_value` can still be `null`

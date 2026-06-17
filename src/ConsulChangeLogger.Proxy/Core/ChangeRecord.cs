@@ -16,6 +16,9 @@ public sealed record ChangeRecord
     [JsonPropertyName("kv_key")]
     public required string KvKey { get; init; }
 
+    [JsonPropertyName("is_folder")]
+    public bool IsFolder { get; init; }
+
     [JsonPropertyName("old_value")]
     public string? OldValue { get; init; }
 

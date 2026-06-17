@@ -80,6 +80,7 @@ internal sealed class ChangeRecordSink
             ["event_id"] = new { type = "keyword" },
             ["action"] = new { type = "keyword" },
             ["kv_key"] = new { type = "keyword" },
+            ["is_folder"] = new { type = "boolean" },
             ["old_value"] = new { type = "text" },
             ["old_value_looks_like_json"] = new { type = "boolean" },
             ["old_value_json_validation_status"] = new { type = "keyword" },
