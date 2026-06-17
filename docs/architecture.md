@@ -6,33 +6,7 @@ This document describes the current implementation, not a generic future design.
 
 ## High-Level View
 
-```mermaid
-flowchart LR
-    browser["Browser"]
-    proxy["Consul Change Logger<br/>ASP.NET Core reverse proxy"]
-    ldap["LDAP / Active Directory"]
-    consulUi["Consul UI shell<br/>served by Consul"]
-    consulApi["Consul HTTP API<br/>/v1/kv and other endpoints"]
-    audit["Audit capture inside proxy"]
-    cache["In-memory read cache"]
-    outbox["Outbox files<br/>yyyy-MM-dd/*.json"]
-    worker["Background dispatch worker"]
-    elastic["Elasticsearch<br/>consul-change-logger"]
-    kibana["Kibana"]
-
-    browser -->|login and all Consul traffic| proxy
-    proxy -->|direct bind| ldap
-    proxy -->|forward /ui/*| consulUi
-    proxy -->|forward /v1/*| consulApi
-    consulUi --> proxy
-    consulApi --> proxy
-    proxy -->|observe KV read/write/delete<br/>while forwarding| audit
-    audit -->|store successful reads| cache
-    audit -->|persist write/delete audit records| outbox
-    outbox -->|enqueue| worker
-    worker -->|retry until success| elastic
-    elastic --> kibana
-```
+![Consul Change Logger request and audit flow](consul-change-logger-flow.svg)
 
 The key detail is this:
 
@@ -41,6 +15,18 @@ The key detail is this:
 - that UI then sends KV API requests such as `GET /v1/kv/...` and `PUT /v1/kv/...`
 - those API calls pass through Consul Change Logger
 - Consul Change Logger forwards them to Consul and, at the same time, creates audit data from the request and response
+
+The diagram follows one continuous flow:
+
+1. the browser opens the existing Consul UI address, which now points to the sidecar
+2. `Consul Change Logger Login UI` serves the login page
+3. LDAP / AD validates the submitted credentials with direct bind
+4. a successful login creates an in-memory session and redirects the browser to `/ui/`
+5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger Proxy`
+6. `Consul Change Logger Proxy` forwards those calls to the existing Consul UI and Consul KV API
+7. Consul responses return through the proxy to the browser
+8. audit capture builds `ChangeRecord` documents and persists them to outbox first
+9. Elasticsearch stores the records and Kibana visualizes them
 
 ## Request Path
 
@@ -102,58 +88,87 @@ This is only a UI guard. The server still allows the request if the user confirm
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User as Browser
-    participant UI as Consul UI JS in Browser
-    participant Proxy as Consul Change Logger
-    participant Consul as Consul API
+    participant Browser
+    participant Login as Consul Change Logger Login UI
+    participant LDAP as LDAP / AD
+    participant Session as In-memory Session
+    participant UI as Consul UI JS
+    participant Proxy as Consul Change Logger Proxy
     participant Cache as Read Cache
+    participant Consul as Existing Consul KV API
     participant Outbox as Outbox
     participant Worker as Dispatch Worker
     participant ES as Elasticsearch
 
-    User->>Proxy: GET /ui/
-    Proxy->>Consul: Forward /ui/ request
-    Consul-->>Proxy: UI HTML + JS
-    Proxy-->>User: Return UI
+    Browser->>Login: GET /login
+    Login-->>Browser: Login form + CSRF token
+    Browser->>Login: POST /login username + password
+    Login->>LDAP: Direct bind
+    LDAP-->>Login: Bind success
+    Login->>Session: Create opaque session id
+    Login-->>Browser: Set session cookie and redirect /ui/
 
-    User->>UI: Edit or view KV in browser
+    Browser->>Proxy: GET /ui/
+    Proxy->>Session: Validate session cookie
+    Session-->>Proxy: Authenticated user
+    Proxy->>Consul: Forward /ui/ request
+    Consul-->>Proxy: Consul UI HTML + JS
+    Proxy-->>Browser: Return Consul UI
+
     UI->>Proxy: GET /v1/kv/app/key?raw
+    Proxy->>Session: Validate session cookie
+    Session-->>Proxy: Authenticated user
     Proxy->>Consul: Forward GET
     Consul-->>Proxy: Current value
-    Proxy->>Cache: Store value by user + client + key
+    Proxy->>Cache: Store old_value by user + client + key
     Proxy-->>UI: Return response
 
     UI->>Proxy: PUT /v1/kv/app/key
+    Proxy->>Session: Validate session cookie
+    Session-->>Proxy: Authenticated user
+    Proxy->>Cache: Check cached old_value
+    alt cache miss and single-key mutation
+        Proxy->>Consul: Prefetch current value
+        Consul-->>Proxy: Current value or 404
+        Proxy->>Cache: Store prefetched old_value
+    end
     Proxy->>Consul: Forward PUT
     Consul-->>Proxy: Write result
-    Proxy->>Cache: Lookup previous read
-    Proxy->>Proxy: Build ChangeRecord
-    Proxy->>Outbox: Write JSON file
-    Proxy->>Worker: Enqueue file path
-    Worker->>ES: PUT document
-    ES-->>Worker: 2xx accepted
-    Worker->>Outbox: Delete delivered file
     Proxy-->>UI: Return write result
+    Proxy->>Proxy: Build ChangeRecord from request, response, user, old_value
+    Proxy->>Outbox: Persist JSON file first
+    Proxy->>Worker: Enqueue outbox file path
+    loop until accepted
+        Worker->>ES: PUT document
+        ES-->>Worker: 2xx or failure
+    end
+    Worker->>Outbox: Delete file only after Elasticsearch accepts it
 ```
+
+Authentication is part of the same request path. The browser cannot reach Consul UI or Consul KV API through this product until the proxy has a valid in-memory session, unless `AUTHENTICATION=false` is explicitly configured. When authentication is enabled, LDAP is used only for direct bind during login; later Consul UI and KV requests are authorized by the proxy session cookie.
 
 ### Read cache
 
 `old_value` is best-effort.
 
-The proxy does not fetch Consul state before every write. Instead, it caches the latest successful KV read using this identity model:
+The proxy uses two sources for `old_value`:
+
+1. the latest successful KV read cached for the same identity
+2. a prefetch before a single-key write or delete when no cached value exists
 
 - authenticated username
 - client IP
 - user agent
 - KV key
 
-If the same identity later performs a write or delete for the same key, the cached read becomes `old_value`.
+If the same identity later performs a write or delete for the same key, the cached or prefetched value becomes `old_value`.
 
 This means:
 
-- if there is no prior read, `old_value` can be `null`
+- if there is no prior read and prefetch is not possible, `old_value` can be `null`
 - if the process restarts, `old_value` can be `null`
 - if traffic is split across replicas without shared state, `old_value` can be `null`
+- if the mutation targets multiple keys or a non-standard path, prefetch is skipped
 
 ### ChangeRecord structure
 
@@ -162,7 +177,7 @@ Current fields include:
 - event metadata:
   `@timestamp`, `event_id`, `request_id`, `action`, `source`, `source_path`
 - KV metadata:
-  `kv_key`, `old_value`, `new_value`, `delete_confirmed`
+  `kv_key`, `old_value`, `new_value`, `create_detected`, `update_detected`, `delete_detected`
 - response metadata:
   `success`, `response_code`
 - user context:
@@ -197,29 +212,35 @@ This means JSON primitives such as `true`, `123`, or `"text"` are currently clas
 
 ```mermaid
 flowchart TD
-    event["KV write/delete detected"]
+    request["KV write/delete response received"]
+    success{"Consul response success?"}
     record["Build ChangeRecord JSON"]
-    persist["Write file to outbox"]
-    queue["Queue outbox path"]
-    dispatch["Send document to Elasticsearch"]
-    accepted{"Accepted?"}
-    retry["Wait and retry"]
-    remove["Delete outbox file"]
-    cleanup["Delete expired daily folders"]
+    persist["Persist to daily outbox file"]
+    enqueue["Enqueue outbox file path"]
+    dispatch["Dispatch worker sends to Elasticsearch"]
+    accepted{"Elasticsearch accepted?"}
+    retry["Wait configured delay and retry"]
+    remove["Delete delivered outbox file"]
+    replay["Startup scans and re-queues pending files"]
+    retention["Delete expired daily folders"]
 
-    event --> record --> persist --> queue --> dispatch --> accepted
+    request --> success
+    success -->|yes or no| record
+    record --> persist --> enqueue --> dispatch --> accepted
     accepted -->|yes| remove
     accepted -->|no| retry --> dispatch
-    persist --> cleanup
+    replay --> enqueue
+    persist --> retention
 ```
 
 Delivery rules:
 
-1. write record JSON to outbox first
-2. enqueue file path
-3. worker dispatches to Elasticsearch
-4. only after Elasticsearch accepts the document is the file deleted
-5. if Elasticsearch is unavailable, the file stays in outbox and is retried
+1. build a `ChangeRecord` after the forwarded Consul write/delete response is available
+2. write the record JSON to outbox before attempting Elasticsearch delivery
+3. enqueue the outbox file path
+4. let the background worker dispatch the document to Elasticsearch
+5. delete the file only after Elasticsearch accepts the document
+6. keep and retry the file if Elasticsearch is unavailable or rejects the request
 
 At startup, the worker scans the outbox and re-queues any leftover files.
 

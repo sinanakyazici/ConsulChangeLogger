@@ -151,40 +151,21 @@ curl http://localhost:8080/health/ready
 
 ## End-to-End Flow
 
-```mermaid
-flowchart LR
-    browser["Browser"]
-    ui["Consul UI HTML + JS<br/>running in browser"]
-    proxy["Consul Change Logger<br/>reverse proxy"]
-    ldap["LDAP / Active Directory"]
-    consulUi["Consul UI shell<br/>served by Consul"]
-    consulApi["Consul KV API<br/>/v1/kv/..."]
-    audit["Audit capture inside proxy"]
-    cache["Read Cache"]
-    outbox["Daily Outbox Files"]
-    worker["Dispatch Worker"]
-    elastic["Elasticsearch"]
-    kibana["Kibana"]
-
-    browser -->|GET /login, POST /login| proxy
-    proxy -->|direct bind| ldap
-    browser -->|GET /ui/*| proxy
-    proxy -->|forward UI request| consulUi
-    consulUi -->|HTML + JS| proxy
-    proxy --> browser
-    browser --> ui
-    ui -->|GET/PUT /v1/kv/...| proxy
-    proxy -->|forward API request| consulApi
-    consulApi -->|API response| proxy
-    proxy -->|observe KV read/write/delete| audit
-    audit -->|store successful KV reads| cache
-    audit -->|persist write/delete records| outbox
-    outbox -->|enqueue| worker
-    worker -->|PUT document| elastic
-    elastic --> kibana
-```
+![Consul Change Logger request and audit flow](docs/consul-change-logger-flow.svg)
 
 The important point is that audit logging happens inside the proxy while it is relaying Consul UI API traffic to Consul. The browser talks only to Consul Change Logger. Consul UI then triggers `/v1/kv/...` requests through that proxy path, and those requests are where reads are cached and writes/deletes are turned into audit records.
+
+Flow summary:
+
+1. The browser opens the existing Consul UI address, but the `consul-ui` Service points to the sidecar.
+2. `Consul Change Logger Login UI` serves `/login`.
+3. LDAP / AD validates the submitted username and password with direct bind.
+4. A successful login creates an in-memory session and redirects the browser to `/ui/`.
+5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger Proxy`.
+6. `Consul Change Logger Proxy` forwards those requests to the existing Consul UI and Consul KV API.
+7. Consul responses return through the proxy back to the browser.
+8. While forwarding KV traffic, the proxy creates audit records and writes them to outbox.
+9. Elasticsearch indexes the audit records and Kibana visualizes them.
 
 The architecture document contains a more detailed breakdown: [docs/architecture.md](docs/architecture.md)
 
@@ -248,6 +229,8 @@ Current behavior:
 - the proxy caches the most recent successful KV read per user/client/key identity
 - if no matching cached read exists, the proxy can prefetch the current value before a single-key write or delete
 - if a matching read is not found, `old_value` can still be `null`
+- the audit record is written to outbox before Elasticsearch delivery is attempted
+- the outbox file is deleted only after Elasticsearch accepts the document
 
 ## JSON Validation
 
