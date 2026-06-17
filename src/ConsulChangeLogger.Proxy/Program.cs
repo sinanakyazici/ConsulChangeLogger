@@ -33,6 +33,7 @@ builder.Host.UseSerilog((_, loggerConfiguration) =>
 builder.Services.AddSingleton(runtimeConfig.Elasticsearch);
 builder.Services.AddSingleton(runtimeConfig.ChangeLog);
 builder.Services.AddSingleton(runtimeConfig.LdapConfiguration);
+builder.Services.AddSingleton(bootstrapOptions);
 
 builder.Services.AddSingleton<LdapAuthenticator>();
 builder.Services.AddSingleton<LoginCsrfTokenStore>();
@@ -77,12 +78,13 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UserSessionMiddleware>();
 
 Log.Information(
-    "Consul Change Logger starting. Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL}",
+    "Consul Change Logger starting. Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled}",
     bootstrapOptions.ConsulUpstreamUrl,
     runtimeConfig.Elasticsearch.Url,
     runtimeConfig.LdapConfiguration.Domain,
     runtimeConfig.LdapConfiguration.UseSSL ? runtimeConfig.LdapConfiguration.SecurePort : runtimeConfig.LdapConfiguration.Port,
-    runtimeConfig.LdapConfiguration.UseSSL);
+    runtimeConfig.LdapConfiguration.UseSSL,
+    bootstrapOptions.Authentication!.Value);
 
 using (var scope = app.Services.CreateScope())
 {

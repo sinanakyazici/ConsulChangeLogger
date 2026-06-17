@@ -21,7 +21,7 @@ internal static class ConsulConfigLoader
     {
         using var httpClient = new HttpClient
         {
-            BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl),
+            BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl!),
             Timeout = TimeSpan.FromSeconds(10)
         };
         if (!string.IsNullOrWhiteSpace(bootstrapOptions.ConsulHttpToken))
@@ -29,8 +29,10 @@ internal static class ConsulConfigLoader
             httpClient.DefaultRequestHeaders.Add("X-Consul-Token", bootstrapOptions.ConsulHttpToken);
         }
 
-        var path = EscapeKvPath(bootstrapOptions.ConfigKey);
+        var path = EscapeKvPath(bootstrapOptions.ConfigKey!);
         var deadline = DateTimeOffset.UtcNow.Add(StartupTimeout);
+        await WaitForConsulAsync(httpClient, bootstrapOptions, deadline, cancellationToken);
+
         Exception? lastError = null;
 
         while (DateTimeOffset.UtcNow < deadline)
@@ -67,10 +69,22 @@ internal static class ConsulConfigLoader
                     $"Timed out while reading Consul configuration key '{bootstrapOptions.ConfigKey}'.");
             }
 
-            Log.Warning(lastError,
-                "Consul configuration is not ready; retrying key {ConfigKey} in {RetryDelaySeconds} seconds",
-                bootstrapOptions.ConfigKey,
-                RetryDelay.TotalSeconds);
+            if (lastError is null)
+            {
+                Log.Warning(
+                    "Consul configuration key {ConfigKey} is not ready yet; retrying in {RetryDelaySeconds} seconds",
+                    bootstrapOptions.ConfigKey,
+                    RetryDelay.TotalSeconds);
+            }
+            else
+            {
+                Log.Warning(
+                    "Consul configuration is not ready; retrying key {ConfigKey} in {RetryDelaySeconds} seconds. Reason: {Reason}",
+                    bootstrapOptions.ConfigKey,
+                    RetryDelay.TotalSeconds,
+                    lastError.Message);
+            }
+
             await Task.Delay(RetryDelay, cancellationToken);
         }
 
@@ -83,6 +97,52 @@ internal static class ConsulConfigLoader
     {
         var config = JsonSerializer.Deserialize<RuntimeConfiguration>(json, JsonOptions);
         return config ?? throw new JsonException("The configuration root must be a JSON object.");
+    }
+
+    private static async Task WaitForConsulAsync(
+        HttpClient httpClient,
+        BootstrapOptions bootstrapOptions,
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
+    {
+        Log.Information("Waiting for Consul availability at {ConsulUrl}", bootstrapOptions.ConsulUpstreamUrl);
+
+        Exception? lastError = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                using var response = await httpClient.GetAsync("/v1/status/leader", cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                Log.Information("Consul is reachable at {ConsulUrl}", bootstrapOptions.ConsulUpstreamUrl);
+                return;
+            }
+            catch (HttpRequestException error)
+            {
+                lastError = error;
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastError = new TimeoutException(
+                    $"Timed out while waiting for Consul at '{bootstrapOptions.ConsulUpstreamUrl}'.");
+            }
+
+            Log.Information(
+                "Waiting for Consul availability at {ConsulUrl}; retrying in {RetryDelaySeconds} seconds. Reason: {Reason}",
+                bootstrapOptions.ConsulUpstreamUrl,
+                RetryDelay.TotalSeconds,
+                lastError?.Message ?? "unknown");
+
+            await Task.Delay(RetryDelay, cancellationToken);
+        }
+
+        throw new TimeoutException(
+            $"Consul at '{bootstrapOptions.ConsulUpstreamUrl}' was not available within {StartupTimeout.TotalSeconds:0} seconds.",
+            lastError);
     }
 
     private static string EscapeKvPath(string key) =>

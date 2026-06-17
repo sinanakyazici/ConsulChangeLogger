@@ -67,7 +67,10 @@ internal sealed class LdapAuthenticator
         var identifier = new LdapDirectoryIdentifier(options.Domain, port);
         var connection = new LdapConnection(identifier);
         connection.SessionOptions.SecureSocketLayer = options.UseSSL;
-        connection.SessionOptions.VerifyServerCertificate += (_, _) => true;
+        if (options.UseSSL)
+        {
+            connection.SessionOptions.VerifyServerCertificate += (_, _) => true;
+        }
         connection.Timeout = TimeSpan.FromSeconds(10);
         return connection;
     }

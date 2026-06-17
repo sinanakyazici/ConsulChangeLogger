@@ -8,6 +8,14 @@ internal static class AuthenticationEndpoints
     {
         app.MapGet("/login", async context =>
         {
+            var bootstrapOptions = app.Services.GetRequiredService<Configuration.BootstrapOptions>();
+            if (!bootstrapOptions.Authentication!.Value)
+            {
+                Log.Information("Authentication is disabled; redirecting /login to /ui/");
+                context.Response.Redirect("/ui/");
+                return;
+            }
+
             if (context.User.Identity?.IsAuthenticated == true)
             {
                 Log.Debug("Authenticated user {Username} requested /login; redirecting to /ui/", context.User.Identity?.Name);
@@ -22,6 +30,14 @@ internal static class AuthenticationEndpoints
 
         app.MapPost("/login", async context =>
         {
+            var bootstrapOptions = app.Services.GetRequiredService<Configuration.BootstrapOptions>();
+            if (!bootstrapOptions.Authentication!.Value)
+            {
+                Log.Information("Authentication is disabled; redirecting POST /login to /ui/");
+                context.Response.Redirect("/ui/");
+                return;
+            }
+
             var form = await context.Request.ReadFormAsync();
             var tokens = app.Services.GetRequiredService<LoginCsrfTokenStore>();
             if (!tokens.Consume(form["csrf_token"].ToString()))
@@ -60,6 +76,14 @@ internal static class AuthenticationEndpoints
 
         app.MapPost("/logout", context =>
         {
+            var bootstrapOptions = app.Services.GetRequiredService<Configuration.BootstrapOptions>();
+            if (!bootstrapOptions.Authentication!.Value)
+            {
+                Log.Information("Authentication is disabled; redirecting /logout to /ui/");
+                context.Response.Redirect("/ui/");
+                return Task.CompletedTask;
+            }
+
             Log.Information("Logout requested by {Username}", context.User.Identity?.Name);
             if (context.Request.Cookies.TryGetValue(UserSessionStore.CookieName, out var sessionId))
             {

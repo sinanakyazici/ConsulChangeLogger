@@ -2,9 +2,10 @@ namespace ConsulChangeLogger.Proxy.Configuration;
 
 internal sealed record BootstrapOptions
 {
-    public string ConsulUpstreamUrl { get; init; } = "http://consul:8500";
-    public string ConfigKey { get; init; } = "consul-change-logger/appsettings.json";
+    public string? ConsulUpstreamUrl { get; init; }
+    public string? ConfigKey { get; init; }
     public string? ConsulHttpToken { get; init; }
+    public bool? Authentication { get; init; }
 
     public static BootstrapOptions FromConfiguration(IConfiguration configuration) => new()
     {
@@ -18,6 +19,12 @@ internal sealed record BootstrapOptions
             "consul-change-logger/appsettings.json").Trim('/'),
         ConsulHttpToken = (
             configuration["CONSUL_HTTP_TOKEN"] ??
-            configuration["ConsulConfiguration:HttpToken"])?.Trim()
+            configuration["ConsulConfiguration:HttpToken"])?.Trim(),
+        Authentication= !(
+            bool.TryParse(
+                configuration["AUTHENTICATION"] ??
+                configuration["Authentication"],
+                out var enabled) &&
+            !enabled)
     };
 }
