@@ -52,10 +52,11 @@ Important properties:
 
 ### 2. Consul UI and API forwarding
 
-After authentication:
+Current request boundary:
 
-- requests to `/ui/*` are forwarded to Consul UI
-- requests to `/v1/*` are forwarded to the Consul HTTP API
+- requests to `/` and `/ui/*` require an authenticated browser session
+- requests to `/v1/*` are forwarded to the Consul HTTP API without forcing a login
+- audit capture is skipped for unauthenticated requests
 
 The proxy copies request headers, body, and method, then writes the upstream response back to the browser.
 
@@ -116,16 +117,14 @@ sequenceDiagram
     Proxy-->>Browser: Return Consul UI
 
     UI->>Proxy: GET /v1/kv/app/key?raw
-    Proxy->>Session: Validate session cookie
-    Session-->>Proxy: Authenticated user
+    Note over UI,Proxy: In the browser flow this request typically carries the session cookie
     Proxy->>Consul: Forward GET
     Consul-->>Proxy: Current value
     Proxy->>Cache: Store old_value by user + client + key
     Proxy-->>UI: Return response
 
     UI->>Proxy: PUT /v1/kv/app/key
-    Proxy->>Session: Validate session cookie
-    Session-->>Proxy: Authenticated user
+    Note over UI,Proxy: Audit capture runs only when the request is authenticated
     Proxy->>Cache: Check cached old_value
     alt cache miss and single-key mutation
         Proxy->>Consul: Prefetch current value
@@ -145,7 +144,7 @@ sequenceDiagram
     Worker->>Outbox: Delete file only after Elasticsearch accepts it
 ```
 
-Authentication is part of the same request path. The browser cannot reach Consul UI or Consul KV API through this product until the proxy has a valid in-memory session, unless `AUTHENTICATION=false` is explicitly configured. When authentication is enabled, LDAP is used only for direct bind during login; later Consul UI and KV requests are authorized by the proxy session cookie.
+Authentication is part of the same browser request path. The browser cannot reach `/` or `/ui/*` through this product until the proxy has a valid in-memory session, unless `AUTHENTICATION=false` is explicitly configured. Requests to `/v1/*` are still passed through without forcing login so non-browser Consul clients are not blocked. When authentication is enabled, LDAP is used only for direct bind during login; later browser UI requests are authorized by the proxy session cookie.
 
 ### Read cache
 
@@ -248,9 +247,12 @@ consul-change-logger
 
 Startup behavior:
 
-1. wait until Elasticsearch root endpoint is reachable
-2. create the index if needed
-3. update the mapping with the expected fields
+1. load bootstrap configuration from local `appsettings.json` or environment variables
+2. wait for Consul and load the runtime JSON document from Consul KV
+3. if `AUTHENTICATION=true`, wait until LDAP is reachable
+4. wait until Elasticsearch root endpoint is reachable
+5. create the index if needed
+6. update the mapping with the expected fields
 
 Delivery model:
 
@@ -278,12 +280,21 @@ It logs:
 
 ## Runtime Configuration
 
-The application reads only bootstrap values from local `appsettings.json`:
+The application reads bootstrap values from local `appsettings.json` or environment variables:
 
 - `ConsulConfiguration.UpstreamUrl`
 - `ConsulConfiguration.ConfigKey`
+- `ConsulConfiguration.HttpToken`
+- `Authentication`
 
-All runtime settings come from the Consul KV JSON document referenced by `ConfigKey`.
+Environment variable equivalents also exist:
+
+- `CONSUL_UPSTREAM_URL`
+- `CONSUL_CONFIG_KEY`
+- `CONSUL_HTTP_TOKEN`
+- `AUTHENTICATION`
+
+All remaining runtime settings come from the Consul KV JSON document referenced by `ConfigKey`.
 
 This includes:
 
@@ -292,6 +303,14 @@ This includes:
 - LDAP settings
 
 Because these values can contain plaintext credentials, Consul ACL policies must restrict access to the configuration key.
+
+Current LDAP runtime behavior:
+
+- login uses direct bind only
+- `Domain`, `Port`, `SecurePort`, and `UseSSL` are actively used
+- `BindDn`, `BindCredentials`, `SearchBase`, and `SearchFilter` remain in the runtime contract for compatibility, but they are not used by the current login flow
+
+If `UseSSL=true`, the current implementation uses TLS but accepts the LDAP server certificate through a permissive validation callback rather than enforcing strict certificate trust validation.
 
 ## Local AD Lab
 
