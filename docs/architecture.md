@@ -177,36 +177,30 @@ Current fields include:
 - event metadata:
   `@timestamp`, `event_id`, `request_id`, `action`, `source`, `source_path`
 - KV metadata:
-  `kv_key`, `old_value`, `new_value`, `create_detected`, `update_detected`, `delete_detected`
+  `kv_key`, `is_folder`, `old_value`, `old_value_observed_at`, `new_value`, `new_value_json_error`, `is_create`, `is_update`, `is_delete`
 - response metadata:
-  `success`, `response_code`
+  `is_success`, `response_status_code`
 - user context:
   `user_email`, `client_ip`, `user_agent`
-- old value tracking:
-  `old_value_seen_at`, `old_value_read_request_id`
-- JSON validation metadata:
-  `old_value_looks_like_json`, `old_value_is_valid_json`, `old_value_json_error`, `old_value_json_validation_status`
-  `new_value_looks_like_json`, `new_value_is_valid_json`, `new_value_json_error`, `new_value_json_validation_status`
+
+Notes:
+
+- `is_folder=true` when the Consul key ends with `/`
+- `old_value` is best-effort and can be `null`
+- `new_value_json_error` is populated only when the submitted new value looks like JSON but cannot be parsed
 
 ### JSON validation semantics
 
 The proxy never rewrites or blocks the KV payload on the server side.
 
-Validation is informational:
-
-- `not_json`
-- `valid_json`
-- `invalid_json`
-
 Current detection rule:
 
 - if a value starts with `{` or `[` after trimming leading whitespace, it is treated as JSON-like
 - JSON-like values are parsed
-- successful parse -> `valid_json`
-- failed parse -> `invalid_json`
-- everything else -> `not_json`
+- failed parse -> `new_value_json_error` contains the parser message
+- successful parse or non-JSON payload -> `new_value_json_error` is `null`
 
-This means JSON primitives such as `true`, `123`, or `"text"` are currently classified as `not_json`, not `valid_json`.
+This means JSON primitives such as `true`, `123`, or `"text"` are treated as non-JSON by the current heuristic, so `new_value_json_error` remains `null`.
 
 ## Outbox and Delivery
 

@@ -5,7 +5,7 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
 
-Consul Change Logger is an ASP.NET Core reverse proxy that sits in front of Consul UI and the Consul HTTP API, authenticates users with LDAP, forwards allowed traffic to Consul, and records Consul KV write and delete activity into Elasticsearch.
+Consul Change Logger is an ASP.NET Core reverse proxy that sits in front of Consul UI and the Consul HTTP API, authenticates browser users with LDAP, forwards allowed traffic to Consul, and records Consul KV write and delete activity into Elasticsearch.
 
 The product is intentionally narrow:
 
@@ -57,13 +57,13 @@ Relevant workflows:
 
 ## What It Does
 
-- Authenticates browser users with LDAP before they can access Consul UI or the Consul API through the proxy.
-- Proxies Consul UI assets and API requests to the upstream Consul endpoint.
+- Authenticates browser users with LDAP before they can access Consul UI through the proxy.
+- Proxies Consul UI assets and Consul API requests to the upstream Consul endpoint.
 - Captures KV reads and can prefetch single-key mutation targets to build a best-effort `old_value`.
 - Captures KV writes and deletes as audit records.
 - Writes each audit record to a local outbox file before Elasticsearch delivery.
 - Retries Elasticsearch delivery until the record is accepted.
-- Adds JSON validation metadata for `old_value` and `new_value`.
+- Adds `new_value_json_error` when a new KV value looks like JSON but is invalid.
 - Shows a browser warning before saving a KV value that looks like JSON but is invalid JSON.
 
 ## Install Model
@@ -81,19 +81,19 @@ The Helm chart intentionally creates only the product-owned PVC and prints patch
 Install example:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
 ```
 
 Upgrade example:
 
 ```powershell
-helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
 ```
 
 Dry-run example against the published OCI chart:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul --create-namespace --dry-run --debug
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --create-namespace --dry-run --debug
 ```
 
 The sidecar bootstrap contract is environment-variable based:
@@ -119,7 +119,7 @@ For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` sha
 1. install the product-owned PVC:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.5 -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
 ```
 
 2. seed runtime config into:
@@ -187,6 +187,20 @@ This matches environments where applications authenticate directly against Activ
 - all requests are treated as authenticated
 - audit records use `authentication-disabled` as the user identity
 
+When `AUTHENTICATION=true`, the current request boundary is:
+
+- `/` and `/ui/*` require an authenticated browser session
+- `/v1/*` remains pass-through so non-browser Consul clients are not forced through the login screen
+- audit capture is skipped for unauthenticated requests
+
+This boundary is intentional. The product currently protects the browser UI path, not every possible Consul API caller that can reach the same endpoint.
+
+Current LDAP runtime behavior:
+
+- login uses direct bind only
+- `LdapConfiguration.Domain`, `Port`, `SecurePort`, and `UseSSL` are actively used
+- `BindDn`, `BindCredentials`, `SearchBase`, and `SearchFilter` remain in the runtime contract for compatibility, but they are not used by the current login flow
+
 ## Audit Record
 
 Each KV write or delete can produce a document like this:
@@ -199,22 +213,14 @@ Each KV write or delete can produce a document like this:
   "kv_key": "test/test1",
   "is_folder": false,
   "old_value": "{ \"a\" : 1 }",
-  "old_value_looks_like_json": true,
-  "old_value_json_validation_status": "valid_json",
-  "old_value_is_valid_json": true,
-  "old_value_json_error": null,
-  "old_value_seen_at": "2026-06-16T10:02:00Z",
-  "old_value_read_request_id": "ed27d99ba89e49ed9440a7638caabea2",
+  "old_value_observed_at": "2026-06-16T10:02:00Z",
   "new_value": "{ \"a\" : 1 }",
-  "new_value_looks_like_json": true,
-  "new_value_json_validation_status": "valid_json",
-  "new_value_is_valid_json": true,
   "new_value_json_error": null,
-  "create_detected": false,
-  "update_detected": true,
-  "delete_detected": false,
-  "success": true,
-  "response_code": 200,
+  "is_create": false,
+  "is_update": true,
+  "is_delete": false,
+  "is_success": true,
+  "response_status_code": 200,
   "client_ip": "::1",
   "user_email": "test.user@examplecorp.com",
   "user_agent": "Mozilla/5.0",
@@ -228,6 +234,7 @@ Current behavior:
 
 - `old_value` is best-effort
 - `is_folder=true` when the Consul key ends with `/`
+- `new_value_json_error` is populated only when the submitted new value looks like JSON but cannot be parsed
 - the proxy caches the most recent successful KV read per user/client/key identity
 - if no matching cached read exists, the proxy can prefetch the current value before a single-key write or delete
 - if a matching read is not found, `old_value` can still be `null`
@@ -236,21 +243,14 @@ Current behavior:
 
 ## JSON Validation
 
-Consul Change Logger does not block invalid JSON on the server side. It records validation metadata and lets the operator decide what to do with that information.
-
-Validation statuses:
-
-- `not_json`
-- `valid_json`
-- `invalid_json`
+Consul Change Logger does not block invalid JSON on the server side. It only records `new_value_json_error` when the submitted new value looks like JSON but cannot be parsed.
 
 Current heuristic:
 
-- if the value starts with `{` or `[` after leading whitespace is removed, it is treated as JSON-like
+- if the new value starts with `{` or `[` after leading whitespace is removed, it is treated as JSON-like
 - JSON-like values are parsed
-- valid parse -> `valid_json`
-- invalid parse -> `invalid_json`
-- everything else -> `not_json`
+- invalid parse -> `new_value_json_error` contains the parser message
+- valid parse or non-JSON payload -> `new_value_json_error` is `null`
 
 Browser-side warning:
 
@@ -261,6 +261,8 @@ Browser-side warning:
 The proxy still allows the write if the user confirms.
 
 If an authenticated browser session expires while Consul UI is making background `fetch` or `XMLHttpRequest` calls, the injected client script now redirects the full page back to `/login`.
+
+This is a UI safeguard only. The server does not reject KV writes just because the payload is invalid JSON.
 
 ## Logging
 
@@ -356,7 +358,9 @@ Notes:
 - `SearchFilter` is currently not used during direct bind login. It remains in the runtime contract for compatibility and future lookup scenarios.
 - `BindDn` and `BindCredentials` are currently not used during direct bind login.
 - For local Windows testing, prefer `127.0.0.1` over `localhost` for LDAP. In this repository's local lab, `localhost` can resolve to IPv6 first and fail while `127.0.0.1` works for both LDAP and LDAPS.
-- At startup the proxy now waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
+- At startup the proxy waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
+- In the current implementation, startup is blocked until Elasticsearch becomes reachable and the target index mapping is ensured.
+- When `LdapConfiguration.UseSSL=true`, the current implementation accepts the server certificate via a permissive validation callback. Traffic is encrypted, but strict certificate trust validation is not yet enforced.
 
 ## Runtime Verification
 
@@ -425,7 +429,7 @@ Useful Kibana filters:
 action : "kv_write"
 kv_key : "test/test1"
 user_email : "test.user@examplecorp.com"
-new_value_json_validation_status : "invalid_json"
+new_value_json_error : *
 ```
 
 If Discover is empty even though documents exist, create a data view for:
@@ -447,7 +451,13 @@ as the time field.
 - `/health/live`
 - `/health/ready`
 
-`/health/ready` verifies Consul and Elasticsearch connectivity.
+`/health/ready` verifies both Consul and Elasticsearch connectivity.
+
+Operational consequence:
+
+- if Consul is unavailable, the proxy is not ready
+- if Elasticsearch is unavailable, the proxy is also not ready
+- this matches the current code, even though audit data is still written to the outbox before Elasticsearch delivery is attempted
 
 ## Kubernetes
 

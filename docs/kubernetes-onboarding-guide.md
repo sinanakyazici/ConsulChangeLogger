@@ -314,10 +314,16 @@ Expected fields:
 event_id
 action
 kv_key
+is_folder
 old_value
+old_value_observed_at
 new_value
-success
-response_code
+new_value_json_error
+is_create
+is_update
+is_delete
+is_success
+response_status_code
 client_ip
 user_email
 user_agent
@@ -355,8 +361,8 @@ Useful dashboard fields:
 - `user_email`
 - `kv_key`
 - `action`
-- `success`
-- `response_code`
+- `is_success`
+- `response_status_code`
 - `@timestamp`
 
 ## 12. Verify Outbox Behavior

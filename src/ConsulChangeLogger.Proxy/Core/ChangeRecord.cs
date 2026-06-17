@@ -22,53 +22,29 @@ public sealed record ChangeRecord
     [JsonPropertyName("old_value")]
     public string? OldValue { get; init; }
 
-    [JsonPropertyName("old_value_looks_like_json")]
-    public bool OldValueLooksLikeJson { get; init; }
-
-    [JsonPropertyName("old_value_json_validation_status")]
-    public string OldValueJsonValidationStatus { get; init; } = "not_json";
-
-    [JsonPropertyName("old_value_is_valid_json")]
-    public bool? OldValueIsValidJson { get; init; }
-
-    [JsonPropertyName("old_value_json_error")]
-    public string? OldValueJsonError { get; init; }
-
-    [JsonPropertyName("old_value_seen_at")]
-    public string? OldValueSeenAt { get; init; }
-
-    [JsonPropertyName("old_value_read_request_id")]
-    public string? OldValueReadRequestId { get; init; }
+    [JsonPropertyName("old_value_observed_at")]
+    public string? OldValueObservedAt { get; init; }
 
     [JsonPropertyName("new_value")]
     public string? NewValue { get; init; }
 
-    [JsonPropertyName("new_value_looks_like_json")]
-    public bool NewValueLooksLikeJson { get; init; }
-
-    [JsonPropertyName("new_value_json_validation_status")]
-    public string NewValueJsonValidationStatus { get; init; } = "not_json";
-
-    [JsonPropertyName("new_value_is_valid_json")]
-    public bool? NewValueIsValidJson { get; init; }
-
     [JsonPropertyName("new_value_json_error")]
     public string? NewValueJsonError { get; init; }
 
-    [JsonPropertyName("create_detected")]
-    public bool CreateDetected { get; init; }
+    [JsonPropertyName("is_create")]
+    public bool IsCreate { get; init; }
 
-    [JsonPropertyName("update_detected")]
-    public bool UpdateDetected { get; init; }
+    [JsonPropertyName("is_update")]
+    public bool IsUpdate { get; init; }
 
-    [JsonPropertyName("delete_detected")]
-    public bool DeleteDetected { get; init; }
+    [JsonPropertyName("is_delete")]
+    public bool IsDelete { get; init; }
 
-    [JsonPropertyName("success")]
-    public bool Success { get; init; }
+    [JsonPropertyName("is_success")]
+    public bool IsSuccess { get; init; }
 
-    [JsonPropertyName("response_code")]
-    public int ResponseCode { get; init; }
+    [JsonPropertyName("response_status_code")]
+    public int ResponseStatusCode { get; init; }
 
     [JsonPropertyName("client_ip")]
     public string? ClientIp { get; init; }

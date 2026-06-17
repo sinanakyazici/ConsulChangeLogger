@@ -380,12 +380,11 @@ internal sealed class ConsulProxy
         }
 
         var read = readCache.Get(identity);
-        var oldValueJson = ConsulKvChangeHelpers.InspectJson(read?.Value);
         var newValue = action == "kv_write" ? requestBody : null;
         var newValueJson = ConsulKvChangeHelpers.InspectJson(newValue);
-        var createDetected = action == "kv_write" && mutationPrefetchState.WasChecked && !mutationPrefetchState.ValueExists;
-        var updateDetected = action == "kv_write" && mutationPrefetchState.WasChecked && mutationPrefetchState.ValueExists;
-        var deleteDetected = action == "kv_delete";
+        var isCreate = action == "kv_write" && mutationPrefetchState.WasChecked && !mutationPrefetchState.ValueExists;
+        var isUpdate = action == "kv_write" && mutationPrefetchState.WasChecked && mutationPrefetchState.ValueExists;
+        var isDelete = action == "kv_delete";
         var changeRecord = new ChangeRecord
         {
             Timestamp = timestamp,
@@ -394,22 +393,14 @@ internal sealed class ConsulProxy
             KvKey = kvKey,
             IsFolder = isFolder,
             OldValue = read?.Value,
-            OldValueLooksLikeJson = oldValueJson.LooksLikeJson,
-            OldValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(oldValueJson),
-            OldValueIsValidJson = oldValueJson.IsValidJson,
-            OldValueJsonError = oldValueJson.Error,
-            OldValueSeenAt = read?.SeenAt,
-            OldValueReadRequestId = read?.RequestId,
+            OldValueObservedAt = read?.SeenAt,
             NewValue = newValue,
-            NewValueLooksLikeJson = newValueJson.LooksLikeJson,
-            NewValueJsonValidationStatus = ConsulKvChangeHelpers.JsonValidationStatus(newValueJson),
-            NewValueIsValidJson = newValueJson.IsValidJson,
             NewValueJsonError = newValueJson.Error,
-            CreateDetected = createDetected,
-            UpdateDetected = updateDetected,
-            DeleteDetected = deleteDetected,
-            Success = ConsulKvChangeHelpers.IsSuccess(responseCode),
-            ResponseCode = responseCode,
+            IsCreate = isCreate,
+            IsUpdate = isUpdate,
+            IsDelete = isDelete,
+            IsSuccess = ConsulKvChangeHelpers.IsSuccess(responseCode),
+            ResponseStatusCode = responseCode,
             ClientIp = clientIp,
             UserEmail = userEmail,
             UserAgent = userAgent,
@@ -427,7 +418,7 @@ internal sealed class ConsulProxy
                 newValueJson.Error);
         }
 
-        if (createDetected)
+        if (isCreate)
         {
             Log.Information(
                 "Detected first-time KV creation for {Key} by {Username}. RequestId={RequestId}",
@@ -436,7 +427,7 @@ internal sealed class ConsulProxy
                 requestId);
         }
 
-        if (updateDetected)
+        if (isUpdate)
         {
             Log.Information(
                 "Detected KV update for {Key} by {Username}. RequestId={RequestId}",
@@ -447,13 +438,13 @@ internal sealed class ConsulProxy
 
         await changeRecordSink.SendAsync(changeRecord, context.RequestAborted);
         Log.Information(
-            "Queued audit record Action={Action} Key={Key} CreateDetected={CreateDetected} UpdateDetected={UpdateDetected} DeleteDetected={DeleteDetected} Success={Success} User={Username} RequestId={RequestId}",
+            "Queued audit record Action={Action} Key={Key} IsCreate={IsCreate} IsUpdate={IsUpdate} IsDelete={IsDelete} IsSuccess={IsSuccess} User={Username} RequestId={RequestId}",
             action,
             kvKey,
-            createDetected,
-            updateDetected,
-            deleteDetected,
-            changeRecord.Success,
+            isCreate,
+            isUpdate,
+            isDelete,
+            changeRecord.IsSuccess,
             userEmail,
             requestId);
     }
