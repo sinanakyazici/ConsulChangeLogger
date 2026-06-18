@@ -4,6 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-sinanakyazici%2Fconsul--change--logger-2496ED.svg)](https://hub.docker.com/r/sinanakyazici/consul-change-logger)
 
 Consul Change Logger is an ASP.NET Core reverse proxy that sits in front of Consul UI and the Consul HTTP API, authenticates browser users with LDAP, forwards allowed traffic to Consul, and records Consul KV write and delete activity into Elasticsearch.
 
@@ -30,7 +31,8 @@ Ownership boundary:
 
 Official distribution artifacts:
 
-- container image: `ghcr.io/sinanakyazici/consul-change-logger`
+- container image on GHCR: `ghcr.io/sinanakyazici/consul-change-logger`
+- container image on Docker Hub: `docker.io/sinanakyazici/consul-change-logger`
 - Helm chart OCI package: `oci://ghcr.io/sinanakyazici/charts/consul-change-logger`
 - GitHub Release asset: `consul-change-logger-X.Y.Z.tgz`
 
@@ -43,6 +45,8 @@ When a semantic version tag such as `v1.2.3` is pushed, the release workflow pub
 - container image:
   - `ghcr.io/sinanakyazici/consul-change-logger:v1.2.3`
   - `ghcr.io/sinanakyazici/consul-change-logger:latest`
+  - `docker.io/sinanakyazici/consul-change-logger:v1.2.3`
+  - `docker.io/sinanakyazici/consul-change-logger:latest`
 - Helm OCI chart:
   - `oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.2.3`
 - GitHub Release:
@@ -54,6 +58,13 @@ Relevant workflows:
 - [CI-main](.github/workflows/ci.yml)
 - [CI-release](.github/workflows/release-ci.yml)
 - [Release-publish](.github/workflows/release.yml)
+
+Docker Hub publishing requires these repository secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+If those secrets are not configured, the release still publishes GHCR and the Helm chart, but skips Docker Hub.
 
 ## What It Does
 
@@ -82,6 +93,12 @@ Install example:
 
 ```powershell
 helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
+```
+
+Install example using the Docker Hub image:
+
+```powershell
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger
 ```
 
 Upgrade example:
@@ -118,6 +135,12 @@ For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` sha
 
 ```powershell
 helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
+```
+
+Docker Hub image variant:
+
+```powershell
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger
 ```
 
 2. seed runtime config into:

@@ -4,6 +4,8 @@ fullnameOverride: ""
 namespaceOverride: ""
 
 image:
+  # Default image registry is GHCR. Docker Hub is also published:
+  # docker.io/sinanakyazici/consul-change-logger
   repository: ghcr.io/sinanakyazici/consul-change-logger
   tag: latest
   pullPolicy: IfNotPresent
