@@ -309,26 +309,6 @@ Current LDAP runtime behavior:
 
 If `UseSSL=true`, the current implementation uses TLS but accepts the LDAP server certificate through a permissive validation callback rather than enforcing strict certificate trust validation.
 
-## Local AD Lab
-
-This repository includes a local Samba-based AD lab under `k8s/`:
-
-- `k8s/samba-ad.yaml`
-- `k8s/samba-ad-ui.yaml`
-
-This lab is for development and verification:
-
-- direct LDAP bind testing
-- AD-style `SearchBase`
-- seeded service account
-- seeded test user
-- phpLDAPadmin access
-
-Current seeded identities:
-
-- `svc-ldap-bind@examplecorp.com`
-- `test.user@examplecorp.com`
-
 ## Limits
 
 - `old_value` is best-effort, not a guaranteed previous-state read

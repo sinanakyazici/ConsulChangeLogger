@@ -364,41 +364,6 @@ Expected behavior:
 - invalid JSON-like values trigger a browser warning before save
 - successful audit events are written to the `consul-change-logger` index
 
-## Local AD Test Environment
-
-This repository now includes a Samba-based local Active Directory test environment for Kubernetes:
-
-- [k8s/samba-ad.yaml](k8s/samba-ad.yaml)
-- [k8s/samba-ad-ui.yaml](k8s/samba-ad-ui.yaml)
-
-This environment provides:
-
-- a local Samba AD-compatible LDAP endpoint
-- a phpLDAPadmin UI
-- a seeded OU structure
-- a seeded service account
-- a seeded test user
-
-Test user:
-
-```text
-test.user@examplecorp.com
-UserPass123!
-```
-
-Service account:
-
-```text
-svc-ldap-bind@examplecorp.com
-Passw0rd!123
-```
-
-If you are using the local port-forward setup from this workspace, the endpoints are:
-
-- LDAP: `127.0.0.1:1389`
-- LDAPS: `127.0.0.1:1636`
-- LDAP UI: `http://localhost:9081/`
-
 ## Elasticsearch and Kibana
 
 The current default Elasticsearch index name is:
@@ -480,7 +445,7 @@ dotnet build ConsulChangeLogger.slnx --configuration Release
 ```text
 src/ConsulChangeLogger.Proxy     Reverse proxy, auth, shared models, audit pipeline
 tests/ConsulChangeLogger.Tests   xUnit tests for core helpers and audit flow support code
-k8s                              Kubernetes examples, rollout patches, and local AD lab manifests
+k8s                              Kubernetes examples and rollout patches
 docs                             Architecture and onboarding docs
 chart/consul-change-logger       Helm chart for product-owned PVC and rollout instructions
 ```
