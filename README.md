@@ -201,8 +201,9 @@ This matches environments where applications authenticate directly against Activ
 
 - `/login` redirects to `/ui/`
 - `/logout` redirects to `/ui/`
-- all requests are treated as authenticated
-- audit records use `authentication-disabled` as the user identity
+- `/` and `/ui/*` are proxied without requiring a session
+- `/v1/*` remains unauthenticated fast pass-through
+- audit capture is disabled because no authenticated browser identity is created
 
 When `AUTHENTICATION=true`, the current request boundary is:
 

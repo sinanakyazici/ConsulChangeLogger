@@ -29,7 +29,7 @@ Current security-relevant behavior:
 - Consul Change Logger records raw KV values by design. Do not use this product if those values must not be written to logs, outbox files, or Elasticsearch.
 - Browser authentication is LDAP direct bind. The submitted username and password are used only for the bind attempt and are not stored in the browser session.
 - The browser session is an opaque in-memory session id. It is not persisted across process restarts.
-- `AUTHENTICATION=false` disables the login screen and treats all requests as authenticated. Do not use that mode in production unless that trust boundary is explicitly acceptable.
+- `AUTHENTICATION=false` disables the login screen and does not create an authenticated audit identity. In that mode, requests are proxied but KV changes are not audited.
 - The current request boundary protects `/` and `/ui/*`. Unauthenticated requests to `/v1/*` use fast pass-through so non-browser Consul clients are not blocked or audited.
 - Consul ACLs must remain enabled. Consul Change Logger is not an authorization system and does not replace Consul ACL enforcement.
 - Run the container as non-root, keep the root filesystem read-only, and mount only the outbox path as writable storage.

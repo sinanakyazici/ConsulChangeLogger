@@ -65,6 +65,7 @@ Important properties:
 - the submitted username is used as the LDAP bind identity
 - the session store is in memory
 - the browser cookie stores only the session id
+- when `AUTHENTICATION=false`, no session identity is created and audit capture is disabled
 
 ### 2. Consul UI and API forwarding
 

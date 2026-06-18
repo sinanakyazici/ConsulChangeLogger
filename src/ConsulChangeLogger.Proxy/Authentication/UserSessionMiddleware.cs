@@ -15,19 +15,8 @@ internal sealed class UserSessionMiddleware
     {
         var bootstrapOptions = context.RequestServices.GetRequiredService<Configuration.BootstrapOptions>();
 
-        if (!bootstrapOptions.Authentication!.Value)
-        {
-            var claims = new[]
-            {
-                new Claim(ClaimTypes.Name, "authentication-disabled"),
-                new Claim(ClaimTypes.Email, "authentication-disabled")
-            };
-            context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "AuthenticationDisabled"));
-            await next(context);
-            return;
-        }
-
-        if (context.Request.Cookies.TryGetValue(UserSessionStore.CookieName, out var sessionId) &&
+        if (bootstrapOptions.Authentication!.Value &&
+            context.Request.Cookies.TryGetValue(UserSessionStore.CookieName, out var sessionId) &&
             sessions.TryGet(sessionId, out var session))
         {
             var claims = new[]

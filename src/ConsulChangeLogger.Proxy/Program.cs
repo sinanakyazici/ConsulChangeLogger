@@ -101,7 +101,9 @@ app.MapGet(JsonValidationClientScript.Path, () =>
 app.Map("/{**path}", async context =>
 {
     var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
-    if (!isAuthenticated && RequestPathPolicy.RequiresAuthenticatedUiSession(context.Request.Path))
+    if (bootstrapOptions.Authentication!.Value &&
+        !isAuthenticated &&
+        RequestPathPolicy.RequiresAuthenticatedUiSession(context.Request.Path))
     {
         Log.Debug("Unauthenticated request for {Path}; redirecting to /login", context.Request.Path);
         context.Response.Redirect("/login");
