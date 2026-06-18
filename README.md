@@ -17,17 +17,17 @@ The product is intentionally narrow:
 
 ## Product Model
 
-Consul Change Logger is packaged as a Kubernetes sidecar product for environments where:
+Consul Change Logger is packaged as a Kubernetes gateway product for environments where:
 
 - `Consul` already exists
 - `Elasticsearch`, `Kibana`, and `LDAP` already exist
-- the existing browser-facing `consul-ui` Service can be patched to point at the sidecar
+- the existing Consul hostname can be routed through Consul Change Logger before reaching Consul
 
 Ownership boundary:
 
 - this product does not install or own Consul
 - this product does not install Elasticsearch, Kibana, or LDAP
-- this product owns only its own sidecar container spec, outbox PVC, and release artifacts
+- this product owns only its own Deployment, Service, outbox PVC, and release artifacts
 
 Official distribution artifacts:
 
@@ -83,28 +83,29 @@ The intended Kubernetes install flow is:
 
 1. install the Helm chart
 2. seed runtime config into Consul KV
-3. patch the existing Consul workload to add the sidecar
-4. patch the existing `consul-ui` Service so browser traffic goes to the sidecar
+3. route the existing Consul hostname/load balancer/Ingress to the Consul Change Logger Service
+4. keep the existing Consul Service as the upstream target
 5. verify health, login, and audit delivery
 
-The Helm chart intentionally creates only the product-owned PVC and prints patch guidance in `NOTES.txt`. It does not install or mutate the existing Consul workload for you.
+The Helm chart creates the product-owned Deployment, Service, and optional outbox PVC. It does not install or mutate the existing Consul workload.
+The default gateway replica count is `1`; keep it that way unless shared session state and multi-writer outbox storage are introduced.
 
 Install example:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
 Install example using the Docker Hub image:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
 Upgrade example:
 
 ```powershell
-helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
 Dry-run example against the published OCI chart:
@@ -113,7 +114,7 @@ Dry-run example against the published OCI chart:
 helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --create-namespace --dry-run --debug
 ```
 
-The sidecar bootstrap contract is environment-variable based:
+The gateway bootstrap contract is environment-variable based:
 
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
@@ -129,18 +130,18 @@ All remaining runtime settings are read from Consul KV.
 
 ### Current Rollout Steps
 
-For the current `consul` / `StatefulSet/consul-server` / `Service/consul-ui` shape used in this repository, the rollout looks like this:
+For a typical existing Consul Service, the rollout looks like this:
 
-1. install the product-owned PVC:
+1. install the gateway:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
 Docker Hub image variant:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n consul --set image.repository=docker.io/sinanakyazici/consul-change-logger --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
 2. seed runtime config into:
@@ -149,23 +150,18 @@ helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-chan
 consul-change-logger/appsettings.json
 ```
 
-3. patch the existing Consul workload:
+3. route the existing Consul hostname/load balancer/Ingress to:
 
-```powershell
-kubectl patch statefulset consul-server -n consul --patch-file .\k8s\consul-server-sidecar-patch.yaml
+```text
+Service: consul-change-logger
+Port:    80
 ```
 
-4. patch the existing browser-facing Service:
+4. verify rollout:
 
 ```powershell
-kubectl patch service consul-ui -n consul --patch-file .\k8s\consul-ui-service-patch.yaml
-```
-
-5. verify rollout:
-
-```powershell
-kubectl rollout status statefulset/consul-server -n consul
-kubectl port-forward svc/consul-ui -n consul 8080:80
+kubectl rollout status deployment/consul-change-logger -n consul
+kubectl port-forward svc/consul-change-logger -n consul 8080:80
 curl http://localhost:8080/health/live
 curl http://localhost:8080/health/ready
 ```
@@ -178,7 +174,7 @@ The important point is that audit logging happens inside the proxy while it is r
 
 Flow summary:
 
-1. The browser opens the existing Consul UI address, but the `consul-ui` Service points to the sidecar.
+1. The browser opens the existing Consul UI address, but the hostname now routes to the Consul Change Logger gateway.
 2. `Consul Change Logger Login UI` serves `/login`.
 3. LDAP / AD validates the submitted username and password with direct bind.
 4. A successful login creates an in-memory session and redirects the browser to `/ui/`.
@@ -211,8 +207,9 @@ This matches environments where applications authenticate directly against Activ
 When `AUTHENTICATION=true`, the current request boundary is:
 
 - `/` and `/ui/*` require an authenticated browser session
-- `/v1/*` remains pass-through so non-browser Consul clients are not forced through the login screen
-- audit capture is skipped for unauthenticated requests
+- unauthenticated `/v1/*` requests use a fast pass-through path so non-browser Consul clients are not forced through the login screen
+- unauthenticated `/v1/*` requests are not audited and do not use the read cache, prefetch, outbox, or Elasticsearch dispatch path
+- authenticated browser `/v1/kv/*` requests can be audited because they carry the UI session
 
 This boundary is intentional. The product currently protects the browser UI path, not every possible Consul API caller that can reach the same endpoint.
 
@@ -307,7 +304,7 @@ The proxy logs:
 
 ## Configuration
 
-Bootstrap configuration defaults exist in `src/ConsulChangeLogger.Proxy/appsettings.json`, but the intended production path is environment variables on the sidecar container:
+Bootstrap configuration defaults exist in `src/ConsulChangeLogger.Proxy/appsettings.json`, but the intended production path is environment variables on the gateway container:
 
 ```json
 {
@@ -348,7 +345,7 @@ Example runtime configuration:
     "Index": "consul-change-logger",
   },
   "ChangeLog": {
-    "OutboxPath": ".local-data/outbox",
+    "OutboxPath": "/var/lib/consul-change-logger/outbox",
     "ReadMatchWindowSeconds": 1800,
     "QueueCapacity": 1000,
     "RetentionDays": 30
@@ -364,25 +361,27 @@ Example runtime configuration:
 
 Notes:
 
-- For local Windows testing, prefer `127.0.0.1` over `localhost` for LDAP. In this repository's local lab, `localhost` can resolve to IPv6 first and fail while `127.0.0.1` works for both LDAP and LDAPS.
+- The Helm chart mounts the outbox PVC at `/var/lib/consul-change-logger/outbox` by default.
 - At startup the proxy waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
 - In the current implementation, startup is blocked until Elasticsearch becomes reachable and the target index mapping is ensured.
 - When `LdapConfiguration.UseSSL=true`, the current implementation accepts the server certificate via a permissive validation callback. Traffic is encrypted, but strict certificate trust validation is not yet enforced.
 
 ## Runtime Verification
 
-After sidecar rollout, the minimum useful checks are:
+After gateway rollout, the minimum useful checks are:
 
-1. open the existing Consul URL and confirm the login screen appears
-2. sign in with LDAP
-3. read a KV key
-4. modify and save that KV key
-5. confirm the change appears in Elasticsearch and Kibana
+1. call a cookies-less `/v1/*` Consul API path and confirm it passes through without login or audit
+2. open the existing Consul URL and confirm the login screen appears
+3. sign in with LDAP
+4. read a KV key
+5. modify and save that KV key
+6. confirm the change appears in Elasticsearch and Kibana
 
 Expected behavior:
 
 - `/health/live` returns live
 - `/health/ready` returns ready
+- cookies-less `/v1/*` requests pass through without audit work
 - a KV read followed by a KV write can populate best-effort `old_value`
 - invalid JSON-like values trigger a browser warning before save
 - successful audit events are written to the `consul-change-logger` index
@@ -439,9 +438,6 @@ Primary install artifact:
 
 Supporting examples and notes:
 
-- [k8s/pvc-example.yaml](k8s/pvc-example.yaml)
-- [k8s/consul-server-sidecar-patch.yaml](k8s/consul-server-sidecar-patch.yaml)
-- [k8s/consul-ui-service-patch.yaml](k8s/consul-ui-service-patch.yaml)
 - [k8s/appsettings.consul.example.json](k8s/appsettings.consul.example.json)
 - [docs/kubernetes-onboarding-guide.md](docs/kubernetes-onboarding-guide.md)
 
@@ -464,9 +460,9 @@ dotnet build ConsulChangeLogger.slnx --configuration Release
 ```text
 src/ConsulChangeLogger.Proxy     Reverse proxy, auth, shared models, audit pipeline
 tests/ConsulChangeLogger.Tests   xUnit tests for core helpers and audit flow support code
-k8s                              Kubernetes examples and rollout patches
+k8s                              Kubernetes runtime configuration and storage examples
 docs                             Architecture and onboarding docs
-chart/consul-change-logger       Helm chart for product-owned PVC and rollout instructions
+chart/consul-change-logger       Helm chart for the gateway Deployment, Service, and outbox PVC
 ```
 
 ## License

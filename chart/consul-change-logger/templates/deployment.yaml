@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "consul-change-logger.fullname" . }}
+  namespace: {{ include "consul-change-logger.namespace" . }}
+  labels:
+    {{- include "consul-change-logger.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "consul-change-logger.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "consul-change-logger.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: consul-change-logger
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.container.port }}
+              protocol: TCP
+          env:
+            - name: CONSUL_UPSTREAM_URL
+              value: {{ .Values.bootstrap.consulUpstreamUrl | quote }}
+            - name: CONSUL_CONFIG_KEY
+              value: {{ .Values.bootstrap.consulConfigKey | quote }}
+            - name: AUTHENTICATION
+              value: {{ .Values.bootstrap.authentication | quote }}
+          volumeMounts:
+            - name: change-log-outbox
+              mountPath: {{ .Values.outbox.mountPath | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 75
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: change-log-outbox
+          {{- if .Values.outbox.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.outbox.pvc.name }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

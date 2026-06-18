@@ -1,6 +1,6 @@
 apiVersion: v2
 name: consul-change-logger
-description: Helm chart for installing Consul Change Logger sidecar support assets into an existing Consul environment.
+description: Helm chart for installing Consul Change Logger as a gateway in front of an existing Consul UI/API endpoint.
 type: application
 version: 0.0.0
 appVersion: "0.0.0"
@@ -11,6 +11,6 @@ keywords:
   - consul
   - audit
   - elasticsearch
-  - sidecar
+  - gateway
 maintainers:
   - name: sinanakyazici

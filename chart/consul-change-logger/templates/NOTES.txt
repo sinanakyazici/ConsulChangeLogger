@@ -1,115 +1,27 @@
-Consul Change Logger was installed as a sidecar support release.
+Consul Change Logger was installed as a gateway release.
 
-This chart intentionally does NOT manage your existing Consul workload or Service.
-It created only the product-owned PVC (if enabled) and prints the patch instructions below.
+This chart does not install or own Consul, Elasticsearch, Kibana, or LDAP.
+It created the Consul Change Logger Deployment, Service, and optional outbox PVC.
 
-1. Confirm the product-owned PVC:
+1. Confirm the gateway pod and Service:
 
-   kubectl get pvc -n {{ include "consul-change-logger.namespace" . }}
+   kubectl get deploy,svc,pvc -n {{ include "consul-change-logger.namespace" . }}
 
 2. Seed runtime configuration into Consul KV using this key:
 
    {{ .Values.bootstrap.consulConfigKey }}
 
-3. Patch the existing Consul workload:
+3. Route only the browser-facing Consul UI endpoint to this Service:
 
-   Namespace: {{ .Values.existingConsul.namespace }}
-   Workload:  {{ .Values.existingConsul.workloadKind }}/{{ .Values.existingConsul.workloadName }}
+   Service: {{ include "consul-change-logger.fullname" . }}
+   Port:    {{ .Values.service.port }}
 
-   Save the following sidecar snippet into a patch file and merge it into the existing pod template:
+   Existing application traffic can keep using the same /v1/* endpoint if this
+   gateway is placed in front of the shared Consul hostname. Unauthenticated
+   /v1/* requests are fast pass-through and are not audited.
 
-   securityContext:
-     fsGroup: {{ .Values.sidecar.fsGroup }}
-     fsGroupChangePolicy: OnRootMismatch
+4. Verify health:
 
-   containers:
-     - name: consul-change-logger
-       image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-       imagePullPolicy: {{ .Values.image.pullPolicy }}
-       securityContext:
-         allowPrivilegeEscalation: false
-         readOnlyRootFilesystem: true
-         runAsNonRoot: true
-         runAsUser: {{ .Values.sidecar.runAsUser }}
-         runAsGroup: {{ .Values.sidecar.runAsGroup }}
-         capabilities:
-           drop:
-             - ALL
-       ports:
-         - name: logger-http
-           containerPort: {{ .Values.sidecar.port }}
-       env:
-         - name: CONSUL_UPSTREAM_URL
-           value: {{ .Values.bootstrap.consulUpstreamUrl | quote }}
-         - name: CONSUL_CONFIG_KEY
-           value: {{ .Values.bootstrap.consulConfigKey | quote }}
-       volumeMounts:
-         - name: change-log-outbox
-           mountPath: /var/lib/consul-change-logger/outbox
-       readinessProbe:
-         httpGet:
-           path: /health/ready
-           port: logger-http
-         initialDelaySeconds: 10
-         periodSeconds: 10
-         timeoutSeconds: 3
-       startupProbe:
-         httpGet:
-           path: /health/live
-           port: logger-http
-         periodSeconds: 2
-         timeoutSeconds: 2
-         failureThreshold: 75
-       livenessProbe:
-         httpGet:
-           path: /health/live
-           port: logger-http
-         periodSeconds: 30
-         timeoutSeconds: 3
-       resources:
-         requests:
-           cpu: {{ .Values.sidecar.resources.requests.cpu }}
-           memory: {{ .Values.sidecar.resources.requests.memory }}
-         limits:
-           cpu: {{ .Values.sidecar.resources.limits.cpu }}
-           memory: {{ .Values.sidecar.resources.limits.memory }}
-
-   volumes:
-     - name: change-log-outbox
-       persistentVolumeClaim:
-         claimName: {{ .Values.outbox.pvc.name }}
-
-4. Patch the existing browser-facing Consul UI Service:
-
-   Namespace: {{ .Values.existingConsul.namespace }}
-   Service:   {{ .Values.existingConsul.uiServiceName }}
-
-   Save the following Service manifest if you prefer to manage the Service declaratively:
-
-   apiVersion: v1
-   kind: Service
-   metadata:
-     name: {{ .Values.existingConsul.uiServiceName }}
-     namespace: {{ .Values.existingConsul.namespace }}
-   spec:
-     ports:
-       - name: http
-         port: {{ .Values.existingConsul.uiServicePort }}
-         targetPort: logger-http
-
-   Or, if the existing Service already has one browser-facing port at index 0, patch only targetPort:
-
-   [
-     {
-       "op": "replace",
-       "path": "/spec/ports/0/targetPort",
-       "value": "logger-http"
-     }
-   ]
-
-5. Verify rollout and health:
-
-   kubectl rollout status {{ lower .Values.existingConsul.workloadKind }}/{{ .Values.existingConsul.workloadName }} -n {{ .Values.existingConsul.namespace }}
-   kubectl port-forward svc/{{ .Values.existingConsul.uiServiceName }} -n {{ .Values.existingConsul.namespace }} 8080:{{ .Values.existingConsul.uiServicePort }}
+   kubectl port-forward svc/{{ include "consul-change-logger.fullname" . }} -n {{ include "consul-change-logger.namespace" . }} 8080:{{ .Values.service.port }}
    curl http://localhost:8080/health/live
    curl http://localhost:8080/health/ready

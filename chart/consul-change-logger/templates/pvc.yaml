@@ -5,8 +5,7 @@ metadata:
   name: {{ .Values.outbox.pvc.name }}
   namespace: {{ include "consul-change-logger.namespace" . }}
   labels:
-    app.kubernetes.io/name: {{ include "consul-change-logger.name" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "consul-change-logger.labels" . | nindent 4 }}
 spec:
   accessModes:
     - {{ .Values.outbox.pvc.accessMode }}

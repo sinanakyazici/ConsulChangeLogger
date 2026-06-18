@@ -2,211 +2,113 @@
 
 This guide explains how to add Consul Change Logger to an existing Kubernetes environment where Consul, Elasticsearch, Kibana, and LDAP are already running.
 
-The intended production shape is a single Consul Change Logger sidecar in the same pod as Consul. All browser traffic that previously reached Consul should be routed to Consul Change Logger instead. Consul Change Logger authenticates the user, forwards allowed Consul HTTP UI/API requests to Consul, and writes Consul KV change records to Elasticsearch.
+The intended production shape is a single Consul Change Logger gateway Deployment in front of the existing browser-facing Consul endpoint. Consul itself is not modified or owned by this product.
 
-## 1. Collect Existing System Information
+## 1. Target Traffic Model
+
+The product is designed for this routing model:
+
+```text
+Browser users -> existing Consul hostname -> Consul Change Logger -> existing Consul Service
+Applications  -> existing Consul hostname -> Consul Change Logger -> existing Consul Service
+```
+
+Path behavior:
+
+- `/` and `/ui/*` require an authenticated browser session.
+- authenticated browser `/v1/kv/*` traffic can be audited.
+- unauthenticated `/v1/*` traffic uses fast pass-through and is not audited.
+
+This keeps existing application Consul API calls working while adding login and change logging for browser-based Consul UI usage.
+
+## 2. Collect Existing System Information
 
 Prepare these values before changing anything:
 
 | Value | Example | Why it is needed |
 | --- | --- | --- |
-| Consul namespace | `consul` | Secret, PVC, Service, and sidecar changes must be applied in the same namespace as the Consul pod. |
-| Consul workload type | `Deployment` or `StatefulSet` | The sidecar patch method depends on the Kubernetes workload type. |
-| Consul workload name | `consul-server` | This is the workload that will receive the Consul Change Logger sidecar container. It may be different from the Service name. |
-| Consul container port | `8500` | Consul Change Logger forwards Consul HTTP UI/API traffic to this port inside the same pod. |
-| Consul UI Service name | `consul-ui` | This browser-facing Service must be updated so user traffic targets the sidecar port instead of the original Consul port. Service names can differ from workload names. |
-| Consul UI Service port | `80` | Ingress usually points to this Service port, so it must remain stable during the rollout. |
-| Public Consul hostname | `https://consul.company.local` | Used to verify browser login and final user access. |
-| Internal Consul URL from the same pod | `http://127.0.0.1:8500` | This is configured in the application's `appsettings.json` as `ConsulConfiguration.UpstreamUrl`. |
-| Elasticsearch URL reachable from the pod | `https://elasticsearch.logging.svc.cluster.local:9200` | Change records are indexed here, and readiness checks depend on this endpoint. |
-| Kibana URL | `https://kibana.company.local` | Used by operators to create the data view and inspect change records. The application does not call Kibana. |
+| Install namespace | `consul` | Namespace where the gateway Deployment, Service, and PVC will be created. |
+| Existing Consul HTTP URL reachable from the gateway pod | `http://consul-server.consul.svc.cluster.local:8500` | Used as `CONSUL_UPSTREAM_URL`. |
+| Existing public Consul hostname | `https://consul.company.local` | This hostname should route to Consul Change Logger after rollout. |
+| Elasticsearch URL reachable from the gateway pod | `https://elasticsearch.logging.svc.cluster.local:9200` | Change records are indexed here. |
+| Kibana URL | `https://kibana.company.local` | Used by operators to inspect change records. The application does not call Kibana. |
 | LDAP domain | `ldap.company.local` | Hostname used for login authentication. |
 | LDAP port / secure port | `389` / `636` | Selected by `LdapConfiguration.UseSSL`. |
 
-If you do not know these values, start with these discovery commands:
+Discovery commands:
 
 ```powershell
-kubectl get pods -A | findstr consul
 kubectl get svc -A | findstr consul
 kubectl get ingress -A | findstr consul
+kubectl get svc -A | findstr elastic
+kubectl get svc -A | findstr ldap
 ```
 
-Then inspect the workload:
-
-```powershell
-kubectl describe deployment <consul-workload-name> -n <consul-namespace>
-```
-
-or:
-
-```powershell
-kubectl describe statefulset <consul-workload-name> -n <consul-namespace>
-```
-
-In many Consul installations, the names are split like this:
-
-| Kubernetes object | Example from the cluster |
-| --- | --- |
-| Pod | `consul-server-0` |
-| Workload | `StatefulSet/consul-server` |
-| Service used by browser traffic | `Service/consul-ui` |
-| Namespace | `consul` |
-
-This is expected. Add the sidecar to the Consul workload, for example `StatefulSet/consul-server`, but route user traffic by updating the Service that users already hit, for example `Service/consul-ui`.
-
-### Which Namespace?
-
-Use the namespace where the existing Consul pod/workload runs. This is the namespace that contains the Deployment or StatefulSet serving the current Consul HTTP UI/API.
-
-Consul Change Logger is added as a sidecar to that same Consul pod, so these resources should be created or updated in the Consul namespace:
-
-- Consul Deployment/StatefulSet
-- Consul UI Service that receives browser traffic, for example `consul-ui`
-- Consul Change Logger sidecar container
-- `consul-change-logger-outbox` PVC
-
-Find it with:
-
-```powershell
-kubectl get pods -A | findstr consul
-```
-
-Example output:
-
-```text
-consul     consul-6d7f8c9d9b-abc12     2/2     Running
-```
-
-In this example, the namespace is:
-
-```text
-consul
-```
-
-Recommended assumption:
-
-```text
-Only one Consul Change Logger pod/sidecar is active.
-```
-
-Single-pod operation keeps `old_value` matching deterministic because the read cache is local memory.
-
-## 2. Install the Helm Chart
+## 3. Install the Helm Chart
 
 Install the chart from GHCR OCI:
 
 ```powershell
-helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version 1.0.2 -n <consul-namespace>
+helm install consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n <install-namespace> --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
-This chart intentionally creates only the product-owned PVC and prints the patch steps in `NOTES.txt`.
-
-Verify the release:
+Upgrade:
 
 ```powershell
-helm status consul-change-logger -n <consul-namespace>
+helm upgrade consul-change-logger oci://ghcr.io/sinanakyazici/charts/consul-change-logger --version <chart-version> -n <install-namespace> --set bootstrap.consulUpstreamUrl="http://consul-server.consul.svc.cluster.local:8500"
 ```
 
-## 3. Protect the Configuration Prefix
+The chart creates:
 
-All runtime settings, including LDAP and Elasticsearch credentials, are stored in one Consul KV JSON document. Enable Consul ACLs and restrict read access to `consul-change-logger/appsettings.json` before using real credentials.
+- `Deployment/consul-change-logger`
+- `Service/consul-change-logger`
+- `PersistentVolumeClaim/consul-change-logger-outbox` when enabled
 
-## 4. Create Persistent Volumes
-Consul Change Logger needs persistent writable storage for:
+The default `replicaCount` is `1`. Keep it at one unless you also introduce shared session state and a multi-writer outbox storage model.
 
-| Path | Purpose |
-| --- | --- |
-| `/var/lib/consul-change-logger/outbox` | Durable retry buffer for Elasticsearch delivery |
+It does not create or modify Consul, Elasticsearch, Kibana, or LDAP.
 
-If you install through Helm, the PVC is created by the chart. Confirm it exists:
+## 4. Seed Runtime Configuration in Consul KV
 
-```powershell
-kubectl get pvc -n <consul-namespace>
-```
-
-Adjust size and storage class through Helm values before install if needed.
-
-## 5. Seed Runtime Configuration in Consul KV
-
-Consul Change Logger reads all runtime configuration from this Consul KV key:
+Consul Change Logger reads runtime configuration from this Consul KV key:
 
 ```text
 consul-change-logger/appsettings.json
 ```
 
-Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example.json), replace its endpoint and credential values, then store the entire JSON document as the value of this key by using either the Consul UI or the Consul CLI.
+Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example.json), replace endpoint and credential values, then store the full JSON document as the value of that key.
 
-## 6. Add the Sidecar to the Consul Pod
+The runtime JSON contains:
 
-Patch the existing Consul Deployment/StatefulSet using the sidecar snippet produced by the chart `NOTES.txt`.
+- Elasticsearch URL, username, password, and index
+- outbox path and retention settings
+- LDAP host, ports, and SSL mode
 
-Key points:
+Protect this key with Consul ACLs because it can contain plaintext credentials.
 
-- `CONSUL_UPSTREAM_URL` should point to the in-pod Consul HTTP endpoint, usually `http://127.0.0.1:8500`
-- `CONSUL_CONFIG_KEY` should point to the Consul KV JSON document
-- The sidecar listens on port `8080`.
-- The pod-level `fsGroup` should allow the non-root container user to write mounted PVCs.
-- The outbox path must be mounted as a writable volume.
+## 5. Route the Existing Consul Hostname to the Gateway
 
-Apply your patched workload manifest:
+Point the existing browser-facing Consul hostname or load-balancer route to:
+
+```text
+Service: consul-change-logger
+Port:    80
+```
+
+The upstream Consul service remains unchanged. Consul Change Logger forwards traffic to the URL configured by:
+
+```text
+CONSUL_UPSTREAM_URL
+```
+
+Do not change application configuration if applications already call the same hostname. Cookies-less `/v1/*` calls are fast pass-through and are not audited.
+
+## 6. Verify Health
+
+Port-forward the gateway Service:
 
 ```powershell
-kubectl apply -f your-consul-workload.yaml
-```
-
-Watch rollout:
-
-```powershell
-kubectl rollout status deployment/consul -n consul
-```
-
-Use the correct workload kind/name for your environment. The chart does not patch the workload automatically.
-
-## 7. Route Consul Traffic Through the Sidecar
-
-Patch the existing Consul UI Service so it targets the Consul Change Logger sidecar port instead of the original Consul port.
-
-Before:
-
-```yaml
-targetPort: 8500
-```
-
-After:
-
-```yaml
-targetPort: logger-http
-```
-
-Patch the existing Service with the provided manifest:
-
-```powershell
-kubectl patch service <consul-ui-service-name> -n <consul-namespace> --patch-file .\k8s\consul-ui-service-patch.yaml
-```
-
-Declarative example manifest:
-
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: consul-ui
-  namespace: consul
-spec:
-  ports:
-    - name: http
-      port: 8500
-      targetPort: logger-http
-```
-
-Your Ingress hostname can stay the same. The user should continue opening the existing Consul web UI URL, but traffic now lands on Consul Change Logger first.
-
-## 8. Verify Health
-
-Port-forward the existing browser-facing Service:
-
-```powershell
-kubectl port-forward svc/<consul-ui-service-name> -n <consul-namespace> 8080:<consul-ui-service-port>
+kubectl port-forward svc/consul-change-logger -n <install-namespace> 8080:80
 ```
 
 Check liveness:
@@ -238,9 +140,27 @@ If readiness fails, check:
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
 - Elasticsearch URL/auth/TLS
-- Consul KV config prefix
+- LDAP URL/port when authentication is enabled
+- Consul KV runtime configuration
 
-## 9. Verify Login
+## 7. Verify Application Pass-Through
+
+Send an application-style request without browser cookies:
+
+```powershell
+curl http://localhost:8080/v1/status/leader
+```
+
+Expected:
+
+- request reaches Consul
+- no login redirect
+- no audit document
+- no outbox file
+
+This verifies the low-cost pass-through path used by non-browser Consul clients.
+
+## 8. Verify Login
 
 Open the existing Consul web UI URL:
 
@@ -251,20 +171,17 @@ https://consul.company.local/ui/
 Expected flow:
 
 1. Consul Change Logger shows the login page.
-2. User enters email/password.
+2. User enters LDAP username/password.
 3. LDAP authentication succeeds.
-5. User is redirected to the Consul web UI.
+4. User is redirected to the Consul web UI.
 
-If login fails:
-
-- Confirm `LdapConfiguration.Domain`, ports, and `UseSSL`.
-- Check sidecar logs.
+If login fails, check gateway logs:
 
 ```powershell
-kubectl logs deployment/consul -n consul -c consul-change-logger --tail=200
+kubectl logs deploy/consul-change-logger -n <install-namespace> --tail=200
 ```
 
-## 10. Verify Change Logging
+## 9. Verify Change Logging
 
 In the Consul web UI:
 
@@ -272,8 +189,6 @@ In the Consul web UI:
 2. Read/view its current value.
 3. Modify the value.
 4. Save the change.
-
-This order matters because `old_value` is captured from the previous read through Consul Change Logger.
 
 Then query Elasticsearch:
 
@@ -306,9 +221,9 @@ source_path
 source
 ```
 
-## 11. View Records in Kibana
+## 10. View Records in Kibana
 
-Open Kibana and create a data view:
+Create a data view:
 
 | Field | Value |
 | --- | --- |
@@ -316,7 +231,7 @@ Open Kibana and create a data view:
 | Index pattern | `consul-change-logger` |
 | Time field | `@timestamp` |
 
-Open Discover and filter with KQL:
+Useful KQL filters:
 
 ```text
 action: "kv_write"
@@ -330,23 +245,14 @@ user_email: "user@example.com"
 kv_key: "app/config"
 ```
 
-Useful dashboard fields:
-
-- `user_email`
-- `kv_key`
-- `action`
-- `is_success`
-- `response_status_code`
-- `@timestamp`
-
-## 12. Verify Outbox Behavior
+## 11. Verify Outbox Behavior
 
 When Elasticsearch is healthy, outbox files are written and then deleted after successful delivery. An empty outbox is normal.
 
-To test retry behavior safely in a non-production environment:
+To test retry behavior in a non-production environment:
 
 1. Temporarily point `Elasticsearch.Url` to an unreachable endpoint in `consul-change-logger/appsettings.json`.
-2. Modify a KV key.
+2. Modify a KV key from the browser UI.
 3. Confirm a JSON file appears under:
 
 ```text
@@ -354,52 +260,35 @@ To test retry behavior safely in a non-production environment:
 ```
 
 4. Restore `Elasticsearch.Url`.
-5. Restart the sidecar or wait for retry.
+5. Restart the gateway or wait for retry.
 6. Confirm the file is delivered and deleted.
 
-## 13. Production Checklist
+## 12. Production Checklist
 
-Before enabling this for all users:
-
-- Consul traffic routes through Consul Change Logger.
-- Consul ACLs are enabled.
+- Existing Consul hostname routes through Consul Change Logger.
+- Existing Consul Service remains unchanged.
+- Application `/v1/*` traffic is pass-through and not audited.
+- Browser `/ui/*` traffic requires login.
+- Consul ACLs protect the runtime configuration key.
 - Elasticsearch TLS/auth works.
-- Consul ACLs restrict read access to the configuration prefix containing credentials.
+- LDAP direct bind works.
 - Outbox PVC is mounted and writable.
-- Sidecar runs as non-root.
+- Container runs as non-root.
 - Root filesystem is read-only.
 - `/health/ready` returns ready.
-- A test KV change appears in Elasticsearch.
+- A browser UI KV change appears in Elasticsearch.
 - Kibana data view exists.
 
-## 14. Rollback Plan
+## 13. Rollback Plan
 
-Rollback is simple because Consul Change Logger sits in front of Consul.
+Rollback is simple because Consul Change Logger is only in front of the Consul endpoint.
 
 To rollback:
 
-1. Change the Consul UI Service `targetPort` back to the original Consul port, for example `8500`.
-2. Roll back the Consul Deployment/StatefulSet to remove the sidecar if needed.
-3. Keep Elasticsearch data for investigation, or delete the `consul-change-logger` index if it was only a test.
+1. Change the existing hostname/load-balancer/Ingress route back to the original Consul Service.
+2. Keep Elasticsearch data for investigation, or delete the `consul-change-logger` index if it was only a test.
+3. Uninstall the chart when no longer needed:
 
-Rollback service example:
-
-```yaml
-ports:
-  - name: http
-    port: 80
-    targetPort: 8500
+```powershell
+helm uninstall consul-change-logger -n <install-namespace>
 ```
-
-## 15. Recommended First Pilot
-
-Start with a limited pilot:
-
-1. Use one namespace.
-2. Use one Consul instance.
-3. Allow only a small LDAP group.
-4. Ask one user to read and update one non-sensitive KV key.
-5. Verify the record in Kibana.
-6. Keep the previous Service targetPort ready for rollback.
-
-After the pilot succeeds, keep the same pattern for production rollout.

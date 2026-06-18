@@ -18,7 +18,7 @@ The key detail is this:
 
 The diagram follows one continuous flow:
 
-1. the browser opens the existing Consul UI address, which now points to the sidecar
+1. the browser opens the existing Consul UI address, which now routes to the Consul Change Logger gateway
 2. `Consul Change Logger Login UI` serves the login page
 3. LDAP / AD validates the submitted credentials with direct bind
 4. a successful login creates an in-memory session and redirects the browser to `/ui/`
@@ -27,6 +27,22 @@ The diagram follows one continuous flow:
 7. Consul responses return through the proxy to the browser
 8. audit capture builds `ChangeRecord` documents and persists them to outbox first
 9. Elasticsearch stores the records and Kibana visualizes them
+
+## Deployment Model
+
+Consul Change Logger runs as its own Kubernetes Deployment and Service. It is not injected into the Consul pod.
+
+```text
+Existing Consul hostname
+        |
+        v
+Consul Change Logger Service
+        |
+        v
+Existing Consul Service
+```
+
+This keeps the existing Consul installation independent from the product. The upstream Consul HTTP endpoint is configured through `CONSUL_UPSTREAM_URL`.
 
 ## Request Path
 
@@ -55,12 +71,13 @@ Important properties:
 Current request boundary:
 
 - requests to `/` and `/ui/*` require an authenticated browser session
-- requests to `/v1/*` are forwarded to the Consul HTTP API without forcing a login
-- audit capture is skipped for unauthenticated requests
+- unauthenticated requests to `/v1/*` are forwarded to the Consul HTTP API without forcing a login
+- unauthenticated `/v1/*` requests use a fast pass-through path and do not enter read cache, prefetch, audit capture, outbox, or Elasticsearch dispatch logic
+- authenticated browser `/v1/kv/*` requests can be audited because they carry the UI session
 
 The proxy copies request headers, body, and method, then writes the upstream response back to the browser.
 
-Non-mutating UI/API traffic passes through as normal. KV mutation traffic is additionally observed by the audit pipeline.
+Non-mutating UI/API traffic passes through as normal. Authenticated browser KV mutation traffic is additionally observed by the audit pipeline. Application traffic that calls `/v1/*` without the browser session is only proxied.
 
 The practical browser flow is:
 

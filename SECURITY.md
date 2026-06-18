@@ -30,7 +30,7 @@ Current security-relevant behavior:
 - Browser authentication is LDAP direct bind. The submitted username and password are used only for the bind attempt and are not stored in the browser session.
 - The browser session is an opaque in-memory session id. It is not persisted across process restarts.
 - `AUTHENTICATION=false` disables the login screen and treats all requests as authenticated. Do not use that mode in production unless that trust boundary is explicitly acceptable.
-- The current request boundary protects `/` and `/ui/*`. Requests to `/v1/*` remain pass-through so non-browser Consul clients are not blocked.
+- The current request boundary protects `/` and `/ui/*`. Unauthenticated requests to `/v1/*` use fast pass-through so non-browser Consul clients are not blocked or audited.
 - Consul ACLs must remain enabled. Consul Change Logger is not an authorization system and does not replace Consul ACL enforcement.
 - Run the container as non-root, keep the root filesystem read-only, and mount only the outbox path as writable storage.
 - Persist the outbox path if you need audit durability across pod restarts.

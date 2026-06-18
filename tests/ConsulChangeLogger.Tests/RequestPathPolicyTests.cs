@@ -17,4 +17,15 @@ public sealed class RequestPathPolicyTests
     {
         Assert.Equal(expected, RequestPathPolicy.RequiresAuthenticatedUiSession(new PathString(path)));
     }
+
+    [Theory]
+    [InlineData("/v1", true)]
+    [InlineData("/v1/kv/app/key", true)]
+    [InlineData("/v1/status/leader", true)]
+    [InlineData("/ui", false)]
+    [InlineData("/login", false)]
+    public void IsConsulApiPath_ReturnsExpectedResult(string path, bool expected)
+    {
+        Assert.Equal(expected, RequestPathPolicy.IsConsulApiPath(new PathString(path)));
+    }
 }

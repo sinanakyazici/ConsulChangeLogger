@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "consul-change-logger.fullname" . }}
+  namespace: {{ include "consul-change-logger.namespace" . }}
+  labels:
+    {{- include "consul-change-logger.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "consul-change-logger.selectorLabels" . | nindent 4 }}

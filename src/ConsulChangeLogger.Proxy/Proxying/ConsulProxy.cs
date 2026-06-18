@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.ChangeLogging;
+using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Proxying;
@@ -44,6 +45,12 @@ internal sealed class ConsulProxy
     {
         try
         {
+            if (context.User.Identity?.IsAuthenticated != true && RequestPathPolicy.IsConsulApiPath(context.Request.Path))
+            {
+                await ForwardUnauthenticatedApiRequestAsync();
+                return;
+            }
+
             Log.Debug(
                 "Proxying {Method} {Path}{Query} for {Username}",
                 context.Request.Method,
@@ -123,6 +130,18 @@ internal sealed class ConsulProxy
         }
     }
 
+    private async Task ForwardUnauthenticatedApiRequestAsync()
+    {
+        using var upstreamRequest = BuildStreamingUpstreamRequest();
+        using var upstreamResponse = await httpClientFactory
+            .CreateClient("consul")
+            .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
+
+        context.Response.StatusCode = (int)upstreamResponse.StatusCode;
+        CopyResponseHeaders(upstreamResponse, includeContentLength: true);
+        await upstreamResponse.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+    }
+
     private async Task<byte[]> ReadRequestBodyAsync()
     {
         if (context.Request.ContentLength is null or 0)
@@ -140,6 +159,34 @@ internal sealed class ConsulProxy
         var target = context.Request.PathBase + context.Request.Path + context.Request.QueryString;
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
 
+        CopyRequestHeaders(request);
+
+        if (requestBodyBytes.Length > 0)
+        {
+            request.Content = new ByteArrayContent(requestBodyBytes);
+            CopyRequestContentHeaders(request.Content);
+        }
+
+        return request;
+    }
+
+    private HttpRequestMessage BuildStreamingUpstreamRequest()
+    {
+        var target = context.Request.PathBase + context.Request.Path + context.Request.QueryString;
+        var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
+        CopyRequestHeaders(request);
+
+        if (RequestCanHaveBody(context.Request.Method) && context.Request.ContentLength != 0)
+        {
+            request.Content = new StreamContent(context.Request.Body);
+            CopyRequestContentHeaders(request.Content);
+        }
+
+        return request;
+    }
+
+    private void CopyRequestHeaders(HttpRequestMessage request)
+    {
         foreach (var header in context.Request.Headers)
         {
             if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
@@ -149,24 +196,32 @@ internal sealed class ConsulProxy
 
             request.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
+    }
 
-        if (requestBodyBytes.Length > 0)
+    private void CopyRequestContentHeaders(HttpContent content)
+    {
+        foreach (var header in context.Request.Headers)
         {
-            request.Content = new ByteArrayContent(requestBodyBytes);
-            foreach (var header in context.Request.Headers)
+            if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
             {
-                request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+                continue;
             }
-        }
 
-        return request;
+            content.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+        }
     }
 
     private async Task WriteDownstreamResponseAsync(HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
     {
         responseBodyBytes = InjectClientScriptIfNeeded(upstreamResponse, responseBodyBytes);
         context.Response.StatusCode = (int)upstreamResponse.StatusCode;
+        CopyResponseHeaders(upstreamResponse, includeContentLength: false);
+        context.Response.Headers.ContentLength = responseBodyBytes.Length;
+        await context.Response.Body.WriteAsync(responseBodyBytes, context.RequestAborted);
+    }
 
+    private void CopyResponseHeaders(HttpResponseMessage upstreamResponse, bool includeContentLength)
+    {
         foreach (var header in upstreamResponse.Headers)
         {
             if (!HopByHopHeaders.Contains(header.Key))
@@ -177,14 +232,12 @@ internal sealed class ConsulProxy
 
         foreach (var header in upstreamResponse.Content.Headers)
         {
-            if (!HopByHopHeaders.Contains(header.Key) && !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+            if (!HopByHopHeaders.Contains(header.Key) &&
+                (includeContentLength || !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
             {
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
         }
-
-        context.Response.Headers.ContentLength = responseBodyBytes.Length;
-        await context.Response.Body.WriteAsync(responseBodyBytes, context.RequestAborted);
     }
 
     private async Task<MutationPrefetchState> PrefetchOldValueForMutationAsync()
@@ -452,4 +505,10 @@ internal sealed class ConsulProxy
     private static bool IsClientDisconnect(IOException exception) =>
         exception.InnerException is SocketException socketException &&
         socketException.ErrorCode is 995 or 10053 or 10054;
+
+    private static bool RequestCanHaveBody(string method) =>
+        HttpMethods.IsPost(method) ||
+        HttpMethods.IsPut(method) ||
+        HttpMethods.IsPatch(method) ||
+        HttpMethods.IsDelete(method);
 }

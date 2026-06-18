@@ -3,6 +3,8 @@ fullnameOverride: ""
 
 namespaceOverride: ""
 
+replicaCount: 1
+
 image:
   # Default image registry is GHCR. Docker Hub is also published:
   # docker.io/sinanakyazici/consul-change-logger
@@ -11,33 +13,45 @@ image:
   pullPolicy: IfNotPresent
 
 bootstrap:
-  # In-pod Consul HTTP endpoint that the sidecar will forward UI/API traffic to.
-  consulUpstreamUrl: "http://127.0.0.1:8500"
+  # Existing Consul HTTP UI/API endpoint reachable from the Consul Change Logger pod.
+  consulUpstreamUrl: "http://consul-server.consul.svc.cluster.local:8500"
   # Consul KV key that contains the runtime JSON document.
   consulConfigKey: "consul-change-logger/appsettings.json"
+  # Set false only for trusted non-production environments.
+  authentication: true
 
-existingConsul:
-  # Existing Consul workload and browser-facing Service metadata.
-  namespace: consul
-  workloadKind: StatefulSet
-  workloadName: consul-server
-  uiServiceName: consul-ui
-  uiServicePort: 80
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
 
-sidecar:
+container:
   port: 8080
+
+podSecurityContext:
   fsGroup: 1654
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
   runAsUser: 1654
   runAsGroup: 1654
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
 
 outbox:
+  mountPath: /var/lib/consul-change-logger/outbox
   pvc:
     enabled: true
     name: consul-change-logger-outbox
