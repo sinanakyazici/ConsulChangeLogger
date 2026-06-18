@@ -29,19 +29,19 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Directory.CreateDirectory(options.OutboxPath);
+        Directory.CreateDirectory(options.OutboxPath!);
         Log.Information(
             "Change record dispatch worker starting. OutboxPath={OutboxPath} RetentionDays={RetentionDays} ElasticsearchIndex={IndexName}",
-            options.OutboxPath,
-            options.RetentionDays,
+            options.OutboxPath!,
+            options.RetentionDays!.Value,
             elasticsearchConfiguration.Index);
 
         ChangeRecordOutbox.DeleteExpiredDailyDirectories(
-            options.OutboxPath,
-            options.RetentionDays,
+            options.OutboxPath!,
+            options.RetentionDays!.Value,
             DateTimeOffset.UtcNow);
 
-        foreach (var path in ChangeRecordOutbox.EnumeratePendingFiles(options.OutboxPath))
+        foreach (var path in ChangeRecordOutbox.EnumeratePendingFiles(options.OutboxPath!))
         {
             Log.Information("Re-queueing pending outbox file {OutboxPath} on startup", path);
             await changeRecordQueue.EnqueueAsync(path, stoppingToken);
@@ -136,8 +136,8 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
             Log.Debug(
                 "Retrying change record EventId={EventId} in {RetryDelaySeconds} seconds",
                 changeRecord.EventId,
-                elasticsearchConfiguration.RetryDelaySeconds);
-            await Task.Delay(TimeSpan.FromSeconds(elasticsearchConfiguration.RetryDelaySeconds), cancellationToken);
+                elasticsearchConfiguration.RetryDelaySeconds!.Value);
+            await Task.Delay(TimeSpan.FromSeconds(elasticsearchConfiguration.RetryDelaySeconds!.Value), cancellationToken);
         }
     }
 

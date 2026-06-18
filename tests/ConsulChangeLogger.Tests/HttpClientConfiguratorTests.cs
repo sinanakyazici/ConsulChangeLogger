@@ -7,42 +7,23 @@ namespace ConsulChangeLogger.Tests;
 public sealed class HttpClientConfiguratorTests
 {
     [Fact]
-    public void ConfigureConsul_AddsConsulTokenHeader_WhenProvided()
+    public void ConfigureConsul_SetsBaseAddressAndTimeout()
     {
         var client = new HttpClient();
         var options = new BootstrapOptions
         {
             ConsulUpstreamUrl = "http://127.0.0.1:8500",
-            ConfigKey = "consul-change-logger/appsettings.json",
-            ConsulHttpToken = "token-123"
+            ConfigKey = "consul-change-logger/appsettings.json"
         };
 
         HttpClientConfigurator.ConfigureConsul(client, options);
 
         Assert.Equal(new Uri("http://127.0.0.1:8500"), client.BaseAddress);
         Assert.Equal(TimeSpan.FromSeconds(95), client.Timeout);
-        Assert.Equal("token-123", client.DefaultRequestHeaders.GetValues("X-Consul-Token").Single());
     }
 
     [Fact]
-    public void ConfigureElasticsearch_UsesApiKey_WhenProvided()
-    {
-        var client = new HttpClient();
-        var configuration = new ElasticsearchConfiguration
-        {
-            Url = "https://localhost:9200",
-            Username = "elastic",
-            Password = "ignored",
-            ApiKey = "api-key-123"
-        };
-
-        HttpClientConfigurator.ConfigureElasticsearch(client, configuration);
-
-        Assert.Equal(new AuthenticationHeaderValue("ApiKey", "api-key-123"), client.DefaultRequestHeaders.Authorization);
-    }
-
-    [Fact]
-    public void ConfigureElasticsearch_UsesBasicAuth_WhenApiKeyMissing()
+    public void ConfigureElasticsearch_UsesBasicAuth_WhenUsernameAndPasswordProvided()
     {
         var client = new HttpClient();
         var configuration = new ElasticsearchConfiguration

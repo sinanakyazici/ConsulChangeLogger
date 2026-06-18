@@ -284,14 +284,12 @@ The application reads bootstrap values from local `appsettings.json` or environm
 
 - `ConsulConfiguration.UpstreamUrl`
 - `ConsulConfiguration.ConfigKey`
-- `ConsulConfiguration.HttpToken`
 - `Authentication`
 
 Environment variable equivalents also exist:
 
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
-- `CONSUL_HTTP_TOKEN`
 - `AUTHENTICATION`
 
 All remaining runtime settings come from the Consul KV JSON document referenced by `ConfigKey`.
@@ -308,7 +306,6 @@ Current LDAP runtime behavior:
 
 - login uses direct bind only
 - `Domain`, `Port`, `SecurePort`, and `UseSSL` are actively used
-- `BindDn`, `BindCredentials`, `SearchBase`, and `SearchFilter` remain in the runtime contract for compatibility, but they are not used by the current login flow
 
 If `UseSSL=true`, the current implementation uses TLS but accepts the LDAP server certificate through a permissive validation callback rather than enforcing strict certificate trust validation.
 

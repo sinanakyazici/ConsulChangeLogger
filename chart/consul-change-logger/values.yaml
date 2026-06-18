@@ -13,8 +13,6 @@ bootstrap:
   consulUpstreamUrl: "http://127.0.0.1:8500"
   # Consul KV key that contains the runtime JSON document.
   consulConfigKey: "consul-change-logger/appsettings.json"
-  # Optional Consul token for reading the runtime config key.
-  consulHttpToken: ""
 
 existingConsul:
   # Existing Consul workload and browser-facing Service metadata.

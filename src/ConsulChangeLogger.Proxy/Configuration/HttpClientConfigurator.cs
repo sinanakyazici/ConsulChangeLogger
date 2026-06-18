@@ -9,24 +9,12 @@ internal static class HttpClientConfigurator
     {
         client.BaseAddress = new Uri(options.ConsulUpstreamUrl!);
         client.Timeout = TimeSpan.FromSeconds(95);
-
-        if (!string.IsNullOrWhiteSpace(options.ConsulHttpToken))
-        {
-            client.DefaultRequestHeaders.Remove("X-Consul-Token");
-            client.DefaultRequestHeaders.Add("X-Consul-Token", options.ConsulHttpToken);
-        }
     }
 
     public static void ConfigureElasticsearch(HttpClient client, ElasticsearchConfiguration configuration)
     {
         client.BaseAddress = new Uri(configuration.Url!);
         client.Timeout = TimeSpan.FromSeconds(10);
-
-        if (!string.IsNullOrWhiteSpace(configuration.ApiKey))
-        {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", configuration.ApiKey);
-            return;
-        }
 
         if (!string.IsNullOrWhiteSpace(configuration.Username) && !string.IsNullOrWhiteSpace(configuration.Password))
         {

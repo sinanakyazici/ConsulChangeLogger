@@ -100,14 +100,12 @@ The sidecar bootstrap contract is environment-variable based:
 
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
-- optional `CONSUL_HTTP_TOKEN`
 - `AUTHENTICATION` (`true` or `false`)
 
 The application also accepts ASP.NET configuration-style keys as a fallback:
 
 - `ConsulConfiguration__UpstreamUrl`
 - `ConsulConfiguration__ConfigKey`
-- `ConsulConfiguration__HttpToken`
 - `Authentication`
 
 All remaining runtime settings are read from Consul KV.
@@ -199,7 +197,6 @@ Current LDAP runtime behavior:
 
 - login uses direct bind only
 - `LdapConfiguration.Domain`, `Port`, `SecurePort`, and `UseSSL` are actively used
-- `BindDn`, `BindCredentials`, `SearchBase`, and `SearchFilter` remain in the runtime contract for compatibility, but they are not used by the current login flow
 
 ## Audit Record
 
@@ -304,7 +301,6 @@ Production bootstrap contract:
 ```text
 CONSUL_UPSTREAM_URL
 CONSUL_CONFIG_KEY
-CONSUL_HTTP_TOKEN (optional)
 AUTHENTICATION (true or false)
 ```
 
@@ -313,7 +309,6 @@ Fallback binding keys:
 ```text
 ConsulConfiguration__UpstreamUrl
 ConsulConfiguration__ConfigKey
-ConsulConfiguration__HttpToken
 Authentication
 ```
 
@@ -327,16 +322,13 @@ Example runtime configuration:
     "Url": "https://localhost:9200",
     "Username": "elastic",
     "Password": "your-password",
-    "ApiKey": "",
     "Index": "consul-change-logger",
     "RetryDelaySeconds": 2,
     "SkipCertificateValidation": true
   },
   "ChangeLog": {
     "OutboxPath": ".local-data/outbox",
-    "DataProtectionPath": ".local-data/data-protection",
     "ReadMatchWindowSeconds": 1800,
-    "MaxBodyBytes": 8192,
     "QueueCapacity": 1000,
     "RetentionDays": 30
   },
@@ -344,10 +336,6 @@ Example runtime configuration:
     "Domain": "127.0.0.1",
     "Port": 1389,
     "SecurePort": 1636,
-    "BindDn": "svc-ldap-bind@examplecorp.com",
-    "BindCredentials": "Passw0rd!123",
-    "SearchBase": "OU=Accounts,OU=Region,OU=Organization,DC=examplecorp,DC=com",
-    "SearchFilter": "(&(objectClass=user)(objectCategory=person)",
     "UseSSL": false
   }
 }
@@ -355,8 +343,6 @@ Example runtime configuration:
 
 Notes:
 
-- `SearchFilter` is currently not used during direct bind login. It remains in the runtime contract for compatibility and future lookup scenarios.
-- `BindDn` and `BindCredentials` are currently not used during direct bind login.
 - For local Windows testing, prefer `127.0.0.1` over `localhost` for LDAP. In this repository's local lab, `localhost` can resolve to IPv6 first and fail while `127.0.0.1` works for both LDAP and LDAPS.
 - At startup the proxy waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
 - In the current implementation, startup is blocked until Elasticsearch becomes reachable and the target index mapping is ensured.

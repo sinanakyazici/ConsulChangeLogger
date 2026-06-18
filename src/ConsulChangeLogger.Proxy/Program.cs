@@ -38,7 +38,7 @@ builder.Services.AddSingleton(bootstrapOptions);
 builder.Services.AddSingleton<LdapAuthenticator>();
 builder.Services.AddSingleton<LoginCsrfTokenStore>();
 builder.Services.AddSingleton<UserSessionStore>();
-builder.Services.AddSingleton(new ReadCache(TimeSpan.FromSeconds(runtimeConfig.ChangeLog.ReadMatchWindowSeconds)));
+builder.Services.AddSingleton(new ReadCache(TimeSpan.FromSeconds(runtimeConfig.ChangeLog.ReadMatchWindowSeconds!.Value)));
 builder.Services.AddSingleton<ChangeRecordQueue>();
 builder.Services.AddSingleton<ChangeRecordSink>();
 builder.Services.AddHostedService<ChangeRecordDispatchWorker>();
@@ -48,7 +48,7 @@ builder.Services.AddHttpClient("consul", client => HttpClientConfigurator.Config
 var elasticsearchClient = builder.Services.AddHttpClient("elasticsearch", client =>
     HttpClientConfigurator.ConfigureElasticsearch(client, runtimeConfig.Elasticsearch));
 
-if (runtimeConfig.Elasticsearch.SkipCertificateValidation)
+if (runtimeConfig.Elasticsearch.SkipCertificateValidation!.Value)
 {
     elasticsearchClient.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
@@ -82,7 +82,7 @@ Log.Information(
     bootstrapOptions.ConsulUpstreamUrl,
     runtimeConfig.Elasticsearch.Url,
     runtimeConfig.LdapConfiguration.Domain,
-    runtimeConfig.LdapConfiguration.UseSSL ? runtimeConfig.LdapConfiguration.SecurePort : runtimeConfig.LdapConfiguration.Port,
+    runtimeConfig.LdapConfiguration.UseSSL!.Value ? runtimeConfig.LdapConfiguration.SecurePort!.Value : runtimeConfig.LdapConfiguration.Port!.Value,
     runtimeConfig.LdapConfiguration.UseSSL,
     bootstrapOptions.Authentication!.Value);
 

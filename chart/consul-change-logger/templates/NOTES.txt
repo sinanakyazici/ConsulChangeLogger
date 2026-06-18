@@ -43,10 +43,6 @@ It created only the product-owned PVC (if enabled) and prints the patch instruct
            value: {{ .Values.bootstrap.consulUpstreamUrl | quote }}
          - name: CONSUL_CONFIG_KEY
            value: {{ .Values.bootstrap.consulConfigKey | quote }}
-{{- if .Values.bootstrap.consulHttpToken }}
-         - name: CONSUL_HTTP_TOKEN
-           value: {{ .Values.bootstrap.consulHttpToken | quote }}
-{{- end }}
        volumeMounts:
          - name: change-log-outbox
            mountPath: /var/lib/consul-change-logger/outbox

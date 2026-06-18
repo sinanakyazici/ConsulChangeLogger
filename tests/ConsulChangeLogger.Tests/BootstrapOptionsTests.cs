@@ -13,7 +13,7 @@ public sealed class BootstrapOptionsTests
             {
                 ["CONSUL_UPSTREAM_URL"] = "http://127.0.0.1:8500/",
                 ["CONSUL_CONFIG_KEY"] = "/consul-change-logger/appsettings.json/",
-                ["CONSUL_HTTP_TOKEN"] = "token-123"
+                ["AUTHENTICATION"] = "true"
             })
             .Build();
 
@@ -21,7 +21,6 @@ public sealed class BootstrapOptionsTests
 
         Assert.Equal("http://127.0.0.1:8500", options.ConsulUpstreamUrl);
         Assert.Equal("consul-change-logger/appsettings.json", options.ConfigKey);
-        Assert.Equal("token-123", options.ConsulHttpToken);
     }
 
     [Fact]
@@ -32,7 +31,7 @@ public sealed class BootstrapOptionsTests
             {
                 ["ConsulConfiguration:UpstreamUrl"] = "http://consul:8500/",
                 ["ConsulConfiguration:ConfigKey"] = "/consul/appsettings.json/",
-                ["ConsulConfiguration:HttpToken"] = "section-token"
+                ["Authentication"] = "true"
             })
             .Build();
 
@@ -40,7 +39,6 @@ public sealed class BootstrapOptionsTests
 
         Assert.Equal("http://consul:8500", options.ConsulUpstreamUrl);
         Assert.Equal("consul/appsettings.json", options.ConfigKey);
-        Assert.Equal("section-token", options.ConsulHttpToken);
     }
 
     [Fact]
@@ -49,6 +47,8 @@ public sealed class BootstrapOptionsTests
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
+                ["CONSUL_UPSTREAM_URL"] = "http://consul:8500/",
+                ["CONSUL_CONFIG_KEY"] = "consul-change-logger/appsettings.json",
                 ["AUTHENTICATION"] = "false"
             })
             .Build();
@@ -59,10 +59,15 @@ public sealed class BootstrapOptionsTests
     }
 
     [Fact]
-    public void FromConfiguration_DefaultsAuthenticationToEnabled()
+    public void FromConfiguration_UsesAuthenticationFlag_WhenExplicitlyEnabled()
     {
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["CONSUL_UPSTREAM_URL"] = "http://consul:8500/",
+                ["CONSUL_CONFIG_KEY"] = "consul-change-logger/appsettings.json",
+                ["AUTHENTICATION"] = "true"
+            })
             .Build();
 
         var options = BootstrapOptions.FromConfiguration(configuration);

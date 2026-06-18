@@ -23,4 +23,4 @@ Use GitHub private vulnerability reporting if it is enabled for the repository. 
 - Consul Change Logger records raw KV values by design. Do not store sensitive data in Consul KV if those values must not appear in logs or Elasticsearch.
 - Use HTTPS at the ingress/load-balancer layer and set `AUTH_COOKIE_SECURE=true` for production.
 - Run Consul with ACLs enabled. Consul Change Logger is not an authorization system.
-- Run the container as non-root, keep the root filesystem read-only, and mount only the outbox and data-protection paths as writable storage.
+- Run the container as non-root, keep the root filesystem read-only, and mount only the outbox path as writable storage.

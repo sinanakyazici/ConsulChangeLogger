@@ -24,10 +24,6 @@ internal static class ConsulConfigLoader
             BaseAddress = new Uri(bootstrapOptions.ConsulUpstreamUrl!),
             Timeout = TimeSpan.FromSeconds(10)
         };
-        if (!string.IsNullOrWhiteSpace(bootstrapOptions.ConsulHttpToken))
-        {
-            httpClient.DefaultRequestHeaders.Add("X-Consul-Token", bootstrapOptions.ConsulHttpToken);
-        }
 
         var path = EscapeKvPath(bootstrapOptions.ConfigKey!);
         var deadline = DateTimeOffset.UtcNow.Add(StartupTimeout);
@@ -96,7 +92,13 @@ internal static class ConsulConfigLoader
     internal static RuntimeConfiguration Parse(string json)
     {
         var config = JsonSerializer.Deserialize<RuntimeConfiguration>(json, JsonOptions);
-        return config ?? throw new JsonException("The configuration root must be a JSON object.");
+        if (config is null)
+        {
+            throw new JsonException("The configuration root must be a JSON object.");
+        }
+
+        ConfigurationValidator.Validate(config);
+        return config;
     }
 
     private static async Task WaitForConsulAsync(

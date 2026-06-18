@@ -22,9 +22,6 @@ Prepare these values before changing anything:
 | Kibana URL | `https://kibana.company.local` | Used by operators to create the data view and inspect change records. The application does not call Kibana. |
 | LDAP domain | `ldap.company.local` | Hostname used for login authentication. |
 | LDAP port / secure port | `389` / `636` | Selected by `LdapConfiguration.UseSSL`. |
-| LDAP search base | `dc=company,dc=local` | Defines where user and group searches start in the LDAP tree. |
-| LDAP bind DN | `cn=readonly,ou=service-users,dc=company,dc=local` | Optional readonly account used for LDAP searches when anonymous search is not allowed. |
-| LDAP search filter | `(mail={0})` | Defines how a login value maps to an LDAP user. |
 
 If you do not know these values, start with these discovery commands:
 
@@ -114,8 +111,6 @@ helm status consul-change-logger -n <consul-namespace>
 
 All runtime settings, including LDAP and Elasticsearch credentials, are stored in one Consul KV JSON document. Enable Consul ACLs and restrict read access to `consul-change-logger/appsettings.json` before using real credentials.
 
-Use either `Elasticsearch.ApiKey` or `Elasticsearch.Username` + `Elasticsearch.Password`. If API key is set, it takes precedence.
-
 ## 4. Create Persistent Volumes
 Consul Change Logger needs persistent writable storage for:
 
@@ -155,7 +150,6 @@ Key points:
 
 - `CONSUL_UPSTREAM_URL` should point to the in-pod Consul HTTP endpoint, usually `http://127.0.0.1:8500`
 - `CONSUL_CONFIG_KEY` should point to the Consul KV JSON document
-- `CONSUL_HTTP_TOKEN` is optional and only needed if Consul KV bootstrap access requires it
 - The sidecar listens on port `8080`.
 - The pod-level `fsGroup` should allow the non-root container user to write mounted PVCs.
 - The outbox path must be mounted as a writable volume.
@@ -262,7 +256,6 @@ If readiness fails, check:
 - `CONSUL_UPSTREAM_URL`
 - `CONSUL_CONFIG_KEY`
 - Elasticsearch URL/auth/TLS
-- `CONSUL_HTTP_TOKEN` if used
 - Consul KV config prefix
 
 ## 9. Verify Login
@@ -282,8 +275,7 @@ Expected flow:
 
 If login fails:
 
-- Confirm `LdapConfiguration.Domain`, ports, `SearchBase`, `SearchFilter`, and `UseSSL`.
-- Confirm `LdapConfiguration.BindCredentials` is correct when `BindDn` is configured.
+- Confirm `LdapConfiguration.Domain`, ports, and `UseSSL`.
 - Check sidecar logs.
 
 ```powershell

@@ -26,7 +26,7 @@ internal sealed class LdapAuthenticator
             return false;
         }
 
-        var port = options.UseSSL ? options.SecurePort : options.Port;
+        var port = options.UseSSL!.Value ? options.SecurePort!.Value : options.Port!.Value;
 
         try
         {
@@ -62,7 +62,7 @@ internal sealed class LdapAuthenticator
 
     public async Task WaitForAvailabilityAsync(CancellationToken cancellationToken)
     {
-        var port = options.UseSSL ? options.SecurePort : options.Port;
+        var port = options.UseSSL!.Value ? options.SecurePort!.Value : options.Port!.Value;
         var deadline = DateTimeOffset.UtcNow.Add(StartupTimeout);
         Exception? lastError = null;
 
@@ -116,7 +116,7 @@ internal sealed class LdapAuthenticator
     private LdapConnection CreateConnection()
     {
         var connectionOptions = new LdapConnectionOptions();
-        if (options.UseSSL)
+        if (options.UseSSL!.Value)
         {
             var remoteCertCallback = new System.Net.Security.RemoteCertificateValidationCallback(RemoteCertValidation);
             connectionOptions = connectionOptions

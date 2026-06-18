@@ -178,12 +178,12 @@ internal sealed class ChangeRecordSink
         Log.Debug("Change record JSON: {ChangeRecordJson}", eventJson);
 
         ChangeRecordOutbox.DeleteExpiredDailyDirectories(
-            options.OutboxPath,
-            options.RetentionDays,
+            options.OutboxPath!,
+            options.RetentionDays!.Value,
             DateTimeOffset.UtcNow);
 
         var outboxPath = ChangeRecordOutbox.BuildPath(
-            options.OutboxPath,
+            options.OutboxPath!,
             changeRecord.EventId,
             ReadTimestamp(changeRecord.Timestamp));
 

@@ -4,27 +4,25 @@ internal sealed record BootstrapOptions
 {
     public string? ConsulUpstreamUrl { get; init; }
     public string? ConfigKey { get; init; }
-    public string? ConsulHttpToken { get; init; }
     public bool? Authentication { get; init; }
 
-    public static BootstrapOptions FromConfiguration(IConfiguration configuration) => new()
+    public static BootstrapOptions FromConfiguration(IConfiguration configuration)
     {
-        ConsulUpstreamUrl = (
-            configuration["CONSUL_UPSTREAM_URL"] ??
-            configuration["ConsulConfiguration:UpstreamUrl"] ??
-            "http://consul:8500").TrimEnd('/'),
-        ConfigKey = (
-            configuration["CONSUL_CONFIG_KEY"] ??
-            configuration["ConsulConfiguration:ConfigKey"] ??
-            "consul-change-logger/appsettings.json").Trim('/'),
-        ConsulHttpToken = (
-            configuration["CONSUL_HTTP_TOKEN"] ??
-            configuration["ConsulConfiguration:HttpToken"])?.Trim(),
-        Authentication= !(
-            bool.TryParse(
-                configuration["AUTHENTICATION"] ??
-                configuration["Authentication"],
-                out var enabled) &&
-            !enabled)
-    };
+        var authenticationRaw = configuration["AUTHENTICATION"] ?? configuration["Authentication"];
+        var options = new BootstrapOptions
+        {
+            ConsulUpstreamUrl = (
+                configuration["CONSUL_UPSTREAM_URL"] ??
+                configuration["ConsulConfiguration:UpstreamUrl"])?.TrimEnd('/'),
+            ConfigKey = (
+                configuration["CONSUL_CONFIG_KEY"] ??
+                configuration["ConsulConfiguration:ConfigKey"])?.Trim('/'),
+            Authentication = bool.TryParse(authenticationRaw, out var enabled)
+                ? enabled
+                : null
+        };
+
+        ConfigurationValidator.Validate(options);
+        return options;
+    }
 }

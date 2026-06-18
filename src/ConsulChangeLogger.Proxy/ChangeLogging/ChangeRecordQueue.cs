@@ -10,7 +10,7 @@ internal sealed class ChangeRecordQueue
 
     public ChangeRecordQueue(ChangeLogConfiguration options)
     {
-        channel = Channel.CreateBounded<string>(new BoundedChannelOptions(options.QueueCapacity)
+        channel = Channel.CreateBounded<string>(new BoundedChannelOptions(options.QueueCapacity!.Value)
         {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
