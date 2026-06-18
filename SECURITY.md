@@ -2,7 +2,10 @@
 
 ## Supported Versions
 
-Only the `main` branch is currently supported.
+The following are considered supported:
+
+- the latest tagged release
+- the current `main` branch
 
 ## Reporting a Vulnerability
 
@@ -18,9 +21,18 @@ Use GitHub private vulnerability reporting if it is enabled for the repository. 
 
 ## Security Notes
 
-- `LDAP_BIND_PASSWORD` is intentionally not read from Consul KV. Provide it through a secret-backed environment variable.
-- `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, and `ELASTICSEARCH_API_KEY` are intentionally not read from Consul KV. Provide them through secret-backed environment variables.
-- Consul Change Logger records raw KV values by design. Do not store sensitive data in Consul KV if those values must not appear in logs or Elasticsearch.
-- Use HTTPS at the ingress/load-balancer layer and set `AUTH_COOKIE_SECURE=true` for production.
-- Run Consul with ACLs enabled. Consul Change Logger is not an authorization system.
+Current security-relevant behavior:
+
+- Runtime settings are loaded from a Consul KV JSON document referenced by `CONSUL_CONFIG_KEY`.
+- That runtime document can contain plaintext Elasticsearch credentials.
+- Protect the configuration key with Consul ACLs and restrict who can read or update it.
+- Consul Change Logger records raw KV values by design. Do not use this product if those values must not be written to logs, outbox files, or Elasticsearch.
+- Browser authentication is LDAP direct bind. The submitted username and password are used only for the bind attempt and are not stored in the browser session.
+- The browser session is an opaque in-memory session id. It is not persisted across process restarts.
+- `AUTHENTICATION=false` disables the login screen and treats all requests as authenticated. Do not use that mode in production unless that trust boundary is explicitly acceptable.
+- The current request boundary protects `/` and `/ui/*`. Requests to `/v1/*` remain pass-through so non-browser Consul clients are not blocked.
+- Consul ACLs must remain enabled. Consul Change Logger is not an authorization system and does not replace Consul ACL enforcement.
 - Run the container as non-root, keep the root filesystem read-only, and mount only the outbox path as writable storage.
+- Persist the outbox path if you need audit durability across pod restarts.
+- Use HTTPS or TLS at the ingress/load-balancer layer for browser traffic.
+- When `LdapConfiguration.UseSSL=true`, the current implementation encrypts LDAP traffic but accepts the LDAP server certificate through a permissive validation callback. Treat this as weaker than strict certificate trust validation.
