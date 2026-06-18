@@ -38,4 +38,14 @@ public sealed class HttpClientConfiguratorTests
         var expected = Convert.ToBase64String(Encoding.UTF8.GetBytes("elastic:secret"));
         Assert.Equal(new AuthenticationHeaderValue("Basic", expected), client.DefaultRequestHeaders.Authorization);
     }
+
+    [Fact]
+    public void CreateElasticsearchHandler_BypassesServerCertificateValidation()
+    {
+        var handler = HttpClientConfigurator.CreateElasticsearchHandler();
+        var callback = handler.ServerCertificateCustomValidationCallback;
+
+        Assert.NotNull(callback);
+        Assert.Same(HttpClientHandler.DangerousAcceptAnyServerCertificateValidator, callback);
+    }
 }

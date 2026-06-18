@@ -22,4 +22,12 @@ internal static class HttpClientConfigurator
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", token);
         }
     }
+
+    public static HttpClientHandler CreateElasticsearchHandler()
+    {
+        return new HttpClientHandler
+        {
+            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+        };
+    }
 }
