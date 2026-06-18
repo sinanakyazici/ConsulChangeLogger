@@ -13,8 +13,6 @@ internal sealed record ElasticsearchConfiguration
     public string? Username { get; init; } 
     public string? Password { get; init; }
     public string? Index { get; init; }
-    public int? RetryDelaySeconds { get; init; }
-    public bool? SkipCertificateValidation { get; init; }
 }
 
 internal sealed record ChangeLogConfiguration

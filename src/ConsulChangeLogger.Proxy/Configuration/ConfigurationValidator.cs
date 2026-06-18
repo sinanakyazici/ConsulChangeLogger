@@ -28,8 +28,6 @@ internal static class ConfigurationValidator
 
         RequireNonBlank(configuration.Elasticsearch.Url, "Elasticsearch.Url", errors);
         RequireNonBlank(configuration.Elasticsearch.Index, "Elasticsearch.Index", errors);
-        RequireNotNull(configuration.Elasticsearch.RetryDelaySeconds, "Elasticsearch.RetryDelaySeconds", errors);
-        RequireNotNull(configuration.Elasticsearch.SkipCertificateValidation, "Elasticsearch.SkipCertificateValidation", errors);
 
         RequireNonBlank(configuration.ChangeLog.OutboxPath, "ChangeLog.OutboxPath", errors);
         RequireNotNull(configuration.ChangeLog.ReadMatchWindowSeconds, "ChangeLog.ReadMatchWindowSeconds", errors);
@@ -47,7 +45,6 @@ internal static class ConfigurationValidator
             errors.Add("Elasticsearch.Url must be a valid absolute URI.");
         }
 
-        RequirePositive(configuration.Elasticsearch.RetryDelaySeconds, "Elasticsearch.RetryDelaySeconds", errors);
         RequirePositive(configuration.ChangeLog.ReadMatchWindowSeconds, "ChangeLog.ReadMatchWindowSeconds", errors);
         RequirePositive(configuration.ChangeLog.QueueCapacity, "ChangeLog.QueueCapacity", errors);
         RequirePositive(configuration.ChangeLog.RetentionDays, "ChangeLog.RetentionDays", errors);

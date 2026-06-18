@@ -323,8 +323,6 @@ Example runtime configuration:
     "Username": "elastic",
     "Password": "your-password",
     "Index": "consul-change-logger",
-    "RetryDelaySeconds": 2,
-    "SkipCertificateValidation": true
   },
   "ChangeLog": {
     "OutboxPath": ".local-data/outbox",

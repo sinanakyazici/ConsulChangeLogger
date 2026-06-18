@@ -56,7 +56,6 @@ public sealed class ConfigurationValidatorTests
         var exception = Assert.Throws<ConfigurationValidationException>(() => ConsulConfigLoader.Parse(json));
 
         Assert.Contains("Elasticsearch.Index is required.", exception.Message);
-        Assert.Contains("Elasticsearch.RetryDelaySeconds is required.", exception.Message);
         Assert.Contains("ChangeLog.QueueCapacity is required.", exception.Message);
         Assert.Contains("LdapConfiguration.Port is required.", exception.Message);
         Assert.Contains("LdapConfiguration.UseSSL is required.", exception.Message);
@@ -69,9 +68,7 @@ public sealed class ConfigurationValidatorTests
         {
           "Elasticsearch": {
             "Url": "https://localhost:9200",
-            "Index": "consul-change-logger",
-            "RetryDelaySeconds": 0,
-            "SkipCertificateValidation": true
+            "Index": "consul-change-logger"
           },
           "ChangeLog": {
             "OutboxPath": ".local-data/outbox",
@@ -90,7 +87,6 @@ public sealed class ConfigurationValidatorTests
 
         var exception = Assert.Throws<ConfigurationValidationException>(() => ConsulConfigLoader.Parse(json));
 
-        Assert.Contains("Elasticsearch.RetryDelaySeconds must be greater than 0.", exception.Message);
         Assert.Contains("ChangeLog.ReadMatchWindowSeconds must be greater than 0.", exception.Message);
         Assert.Contains("ChangeLog.QueueCapacity must be greater than 0.", exception.Message);
         Assert.Contains("ChangeLog.RetentionDays must be greater than 0.", exception.Message);

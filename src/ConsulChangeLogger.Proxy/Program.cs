@@ -48,14 +48,6 @@ builder.Services.AddHttpClient("consul", client => HttpClientConfigurator.Config
 var elasticsearchClient = builder.Services.AddHttpClient("elasticsearch", client =>
     HttpClientConfigurator.ConfigureElasticsearch(client, runtimeConfig.Elasticsearch));
 
-if (runtimeConfig.Elasticsearch.SkipCertificateValidation!.Value)
-{
-    elasticsearchClient.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-    {
-        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-    });
-}
-
 var app = builder.Build();
 app.UseSerilogRequestLogging(options =>
 {

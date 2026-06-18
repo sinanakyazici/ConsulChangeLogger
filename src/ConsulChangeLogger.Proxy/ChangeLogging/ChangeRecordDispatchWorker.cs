@@ -136,8 +136,8 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
             Log.Debug(
                 "Retrying change record EventId={EventId} in {RetryDelaySeconds} seconds",
                 changeRecord.EventId,
-                elasticsearchConfiguration.RetryDelaySeconds!.Value);
-            await Task.Delay(TimeSpan.FromSeconds(elasticsearchConfiguration.RetryDelaySeconds!.Value), cancellationToken);
+                2);
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
     }
 
