@@ -135,7 +135,7 @@ kubectl patch statefulset consul-server -n consul --patch-file .\k8s\consul-serv
 4. patch the existing browser-facing Service:
 
 ```powershell
-kubectl patch service consul-ui -n consul --type=json --patch-file .\k8s\consul-ui-service-targetport-patch.json
+kubectl patch service consul-ui -n consul --patch-file .\k8s\consul-ui-service-patch.yaml
 ```
 
 5. verify rollout:
@@ -416,14 +416,10 @@ Primary install artifact:
 
 Supporting examples and notes:
 
-- [k8s/sidecar-snippet.yaml](k8s/sidecar-snippet.yaml)
-- [k8s/service-example.yaml](k8s/service-example.yaml)
 - [k8s/pvc-example.yaml](k8s/pvc-example.yaml)
 - [k8s/consul-server-sidecar-patch.yaml](k8s/consul-server-sidecar-patch.yaml)
 - [k8s/consul-ui-service-patch.yaml](k8s/consul-ui-service-patch.yaml)
-- [k8s/consul-ui-service-targetport-patch.json](k8s/consul-ui-service-targetport-patch.json)
 - [k8s/appsettings.consul.example.json](k8s/appsettings.consul.example.json)
-- [k8s/consul-config-seed.example.sh](k8s/consul-config-seed.example.sh)
 - [docs/kubernetes-onboarding-guide.md](docs/kubernetes-onboarding-guide.md)
 
 ## Security Notes

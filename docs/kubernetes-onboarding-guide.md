@@ -134,13 +134,7 @@ Consul Change Logger reads all runtime configuration from this Consul KV key:
 consul-change-logger/appsettings.json
 ```
 
-Run the seed script from an environment where the `consul` CLI can reach your Consul cluster:
-
-```sh
-sh k8s/consul-config-seed.example.sh
-```
-
-Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example.json), replace its endpoint and credential values, then store the entire JSON document as the value of this key.
+Review [`k8s/appsettings.consul.example.json`](../k8s/appsettings.consul.example.json), replace its endpoint and credential values, then store the entire JSON document as the value of this key by using either the Consul UI or the Consul CLI.
 
 ## 6. Add the Sidecar to the Consul Pod
 
@@ -184,22 +178,10 @@ After:
 targetPort: logger-http
 ```
 
-If the Service already exists and already contains a single browser-facing port at index `0`, patch only `targetPort`:
+Patch the existing Service with the provided manifest:
 
 ```powershell
-kubectl patch service <consul-ui-service-name> -n <consul-namespace> --type=json --patch-file .\k8s\consul-ui-service-targetport-patch.json
-```
-
-Patch file:
-
-```json
-[
-  {
-    "op": "replace",
-    "path": "/spec/ports/0/targetPort",
-    "value": "logger-http"
-  }
-]
+kubectl patch service <consul-ui-service-name> -n <consul-namespace> --patch-file .\k8s\consul-ui-service-patch.yaml
 ```
 
 Declarative example manifest:
