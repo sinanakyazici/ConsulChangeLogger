@@ -14,7 +14,7 @@ permissions:
 jobs:
   detect-release:
     name: Detect tagged CI run
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +49,7 @@ jobs:
     name: Publish release artifacts
     needs:
       - detect-release
-    if: github.event.workflow_run.event == 'push' && needs.detect-release.outputs.should_release == 'true'
+    if: github.event.workflow_run.head_branch == 'main' && needs.detect-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: read
