@@ -1,6 +1,7 @@
 # Consul Change Logger
 
 [![CI](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
@@ -56,7 +57,7 @@ When a semantic version tag such as `v1.2.3` is pushed, the release workflow pub
 
 Relevant workflows:
 
-- [CI-main](.github/workflows/ci.yml)
+- [CI-main](.github/workflows/ci.yml) runs build, tests, Helm validation, Docker build, SonarCloud quality gate, and CodeQL security gate.
 - [CI-release](.github/workflows/release-ci.yml)
 - [Release-publish](.github/workflows/release.yml)
 

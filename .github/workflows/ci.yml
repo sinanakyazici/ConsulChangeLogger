@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
 jobs:
   build-test-docker:
     name: Build, test, chart validation, and Docker build
@@ -42,3 +47,91 @@ jobs:
 
       - name: Docker build
         run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=ci-${{ github.sha }} -t consul-change-logger:ci .
+
+  sonarcloud:
+    name: SonarCloud quality gate
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install SonarScanner
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Restore
+        run: dotnet restore ConsulChangeLogger.slnx
+
+      - name: Begin SonarCloud analysis
+        run: >
+          dotnet sonarscanner begin
+          /k:"sinanakyazici_ConsulChangeLogger"
+          /o:"sinanakyazici"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.token="${SONAR_TOKEN}"
+          /d:sonar.qualitygate.wait=true
+
+      - name: Build
+        run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test ConsulChangeLogger.slnx --configuration Release --no-build
+
+      - name: End SonarCloud analysis
+        run: dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}"
+
+  codeql:
+    name: CodeQL security gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
+
+      - name: Restore
+        run: dotnet restore ConsulChangeLogger.slnx
+
+      - name: Build
+        run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          output: codeql-results
+
+      - name: Fail if CodeQL produced findings
+        shell: bash
+        run: |
+          mapfile -d '' sarif_files < <(find codeql-results -name '*.sarif' -print0)
+          if [ "${#sarif_files[@]}" -eq 0 ]; then
+            echo "No CodeQL SARIF file was produced. Failing CI."
+            exit 1
+          fi
+
+          result_count="$(jq -s '[.[].runs[]?.results[]?] | length' "${sarif_files[@]}")"
+
+          echo "CodeQL findings: ${result_count}"
+          if [ "${result_count}" -gt 0 ]; then
+            echo "CodeQL found ${result_count} issue(s). Failing CI."
+            exit 1
+          fi
