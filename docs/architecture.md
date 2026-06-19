@@ -99,6 +99,7 @@ That script:
 - watches `PUT /v1/kv/...` requests
 - checks whether the body looks like JSON
 - if it looks like JSON but is invalid, shows a browser confirmation dialog
+- injects a fixed logout button that posts to `/logout`
 
 This is only a UI guard. The server still allows the request if the user confirms.
 

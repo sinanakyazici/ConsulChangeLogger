@@ -2,7 +2,7 @@ namespace ConsulChangeLogger.Proxy.Proxying;
 
 internal static class JsonValidationClientScript
 {
-    public const string Path = "/_ccl/json-validation.js";
+    public const string Path = "/ui/_ccl/json-validation.js";
 
     public static string Content =>
         """
@@ -28,6 +28,42 @@ internal static class JsonValidationClientScript
 
             redirectingToLogin = true;
             window.location.assign("/login");
+          }
+
+          function injectLogoutButton() {
+            if (document.getElementById("ccl-logout-button")) {
+              return;
+            }
+
+            const button = document.createElement("button");
+            button.id = "ccl-logout-button";
+            button.type = "button";
+            button.textContent = "Logout";
+            button.setAttribute("aria-label", "Logout");
+            button.style.position = "fixed";
+            button.style.top = "12px";
+            button.style.right = "16px";
+            button.style.zIndex = "2147483647";
+            button.style.height = "32px";
+            button.style.padding = "0 12px";
+            button.style.border = "1px solid #b8c4d8";
+            button.style.borderRadius = "4px";
+            button.style.background = "#ffffff";
+            button.style.color = "#172033";
+            button.style.font = "600 13px system-ui, -apple-system, Segoe UI, sans-serif";
+            button.style.boxShadow = "0 2px 8px rgba(15, 23, 42, 0.16)";
+            button.style.cursor = "pointer";
+
+            button.addEventListener("click", async () => {
+              button.disabled = true;
+              try {
+                await fetch("/logout", { method: "POST", credentials: "same-origin" });
+              } finally {
+                window.location.assign("/login");
+              }
+            });
+
+            document.body.appendChild(button);
           }
 
           function allowNextKvPut() {
@@ -179,6 +215,12 @@ internal static class JsonValidationClientScript
           document.addEventListener("submit", event => {
             handleUiSaveAttempt(event.target, event);
           }, true);
+
+          if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", injectLogoutButton, { once: true });
+          } else {
+            injectLogoutButton();
+          }
 
           const originalFetch = window.fetch.bind(window);
           window.fetch = async function(input, init) {

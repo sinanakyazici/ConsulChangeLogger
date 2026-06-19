@@ -95,6 +95,17 @@ Service: consul-change-logger
 Port:    80
 ```
 
+Required paths for the browser UI flow:
+
+```text
+/login  -> consul-change-logger
+/logout -> consul-change-logger
+/ui     -> consul-change-logger
+/v1     -> consul-change-logger
+```
+
+`/ui` must include subpaths because the proxy injects its JSON validation browser script under `/ui/_ccl/json-validation.js`.
+
 The upstream Consul service remains unchanged. Consul Change Logger forwards traffic to the URL configured by:
 
 ```text

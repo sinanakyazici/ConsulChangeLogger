@@ -276,6 +276,9 @@ Browser-side warning:
 - if the outgoing KV body looks like JSON but cannot be parsed
 - the browser asks whether the user still wants to continue
 
+The warning script is served from `/ui/_ccl/json-validation.js`, so the browser-facing route must send `/ui/*` traffic to Consul Change Logger.
+The same script injects a fixed `Logout` button into the Consul UI and posts to `/logout`.
+
 The proxy still allows the write if the user confirms.
 
 If an authenticated browser session expires while Consul UI is making background `fetch` or `XMLHttpRequest` calls, the injected client script now redirects the full page back to `/login`.
