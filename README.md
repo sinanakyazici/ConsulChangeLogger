@@ -1,6 +1,7 @@
 # Consul Change Logger
 
 [![CI](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/codeql.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/codeql.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
