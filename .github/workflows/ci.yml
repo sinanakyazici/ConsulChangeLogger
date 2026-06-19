@@ -1,12 +1,11 @@
 name: CI-main
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_run:
+    workflows:
+      - SonarCloud
+    types:
+      - completed
 
 permissions:
   actions: read
@@ -14,12 +13,16 @@ permissions:
 
 jobs:
   build-test-docker:
-    name: Build, test, chart validation, and Docker build
+    name: Build, test, chart validation, Docker build, and release bundle
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout triggering commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -28,6 +31,24 @@ jobs:
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
+
+      - name: Detect semantic version tag
+        id: release
+        shell: bash
+        run: |
+          TAG="$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          if [[ -z "$TAG" ]]; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "version_label=ci-${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${TAG#v}"
+          echo "is_release=true" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_label=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/sinanakyazici/consul-change-logger" >> "$GITHUB_OUTPUT"
 
       - name: Restore
         run: dotnet restore ConsulChangeLogger.slnx
@@ -45,7 +66,7 @@ jobs:
         run: helm template consul-change-logger chart/consul-change-logger
 
       - name: Docker build
-        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=ci-${{ github.sha }} -t consul-change-logger:ci .
+        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=${{ steps.release.outputs.version_label }} -t consul-change-logger:ci .
 
       - name: Docker Scout vulnerability gate
         uses: docker/scout-action@v1
@@ -56,43 +77,26 @@ jobs:
           dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  sonarcloud:
-    name: SonarCloud quality gate
-    runs-on: ubuntu-latest
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Prepare release bundle
+        if: steps.release.outputs.is_release == 'true'
+        shell: bash
+        run: |
+          mkdir -p dist
+          docker tag consul-change-logger:ci "${{ steps.release.outputs.image }}:${{ steps.release.outputs.tag }}"
+          docker tag consul-change-logger:ci "${{ steps.release.outputs.image }}:latest"
+          docker save \
+            --output dist/consul-change-logger-image.tar \
+            "${{ steps.release.outputs.image }}:${{ steps.release.outputs.tag }}" \
+            "${{ steps.release.outputs.image }}:latest"
+          helm package chart/consul-change-logger \
+            --version "${{ steps.release.outputs.version }}" \
+            --app-version "${{ steps.release.outputs.version }}" \
+            --destination dist
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Upload release bundle
+        if: steps.release.outputs.is_release == 'true'
+        uses: actions/upload-artifact@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Install SonarScanner
-        run: dotnet tool install --global dotnet-sonarscanner
-
-      - name: Restore
-        run: dotnet restore ConsulChangeLogger.slnx
-
-      - name: Begin SonarCloud analysis
-        run: >
-          dotnet sonarscanner begin
-          /k:"sinanakyazici_ConsulChangeLogger"
-          /o:"sinanakyazici"
-          /d:sonar.host.url="https://sonarcloud.io"
-          /d:sonar.token="${SONAR_TOKEN}"
-          /d:sonar.qualitygate.wait=true
-
-      - name: Build
-        run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore
-
-      - name: Run tests
-        run: dotnet test ConsulChangeLogger.slnx --configuration Release --no-build
-
-      - name: End SonarCloud analysis
-        run: dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}"
+          name: release-bundle-${{ steps.release.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
