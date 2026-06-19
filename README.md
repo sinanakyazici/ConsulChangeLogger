@@ -175,11 +175,11 @@ The important point is that audit logging happens inside the proxy while it is r
 Flow summary:
 
 1. The browser opens the existing Consul UI address, but the hostname now routes to the Consul Change Logger gateway.
-2. `Consul Change Logger Login UI` serves `/login`.
+2. `Consul Change Logger` serves `/login`.
 3. LDAP / AD validates the submitted username and password with direct bind.
 4. A successful login creates an in-memory session and redirects the browser to `/ui/`.
-5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger Proxy`.
-6. `Consul Change Logger Proxy` forwards those requests to the existing Consul UI and Consul KV API.
+5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`.
+6. `Consul Change Logger` forwards those requests to the existing Consul UI and Consul KV API.
 7. Consul responses return through the proxy back to the browser.
 8. While forwarding KV traffic, the proxy creates audit records and writes them to outbox.
 9. Elasticsearch indexes the audit records and Kibana visualizes them.

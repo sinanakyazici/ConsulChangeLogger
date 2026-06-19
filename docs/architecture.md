@@ -19,11 +19,11 @@ The key detail is this:
 The diagram follows one continuous flow:
 
 1. the browser opens the existing Consul UI address, which now routes to the Consul Change Logger gateway
-2. `Consul Change Logger Login UI` serves the login page
+2. `Consul Change Logger` serves the login page
 3. LDAP / AD validates the submitted credentials with direct bind
 4. a successful login creates an in-memory session and redirects the browser to `/ui/`
-5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger Proxy`
-6. `Consul Change Logger Proxy` forwards those calls to the existing Consul UI and Consul KV API
+5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`
+6. `Consul Change Logger` forwards those calls to the existing Consul UI and Consul KV API
 7. Consul responses return through the proxy to the browser
 8. audit capture builds `ChangeRecord` documents and persists them to outbox first
 9. Elasticsearch stores the records and Kibana visualizes them
@@ -113,53 +113,56 @@ This is only a UI guard. The server still allows the request if the user confirm
 sequenceDiagram
     autonumber
     participant Browser
-    participant Login as Consul Change Logger Login UI
+    participant CCL as Consul Change Logger
     participant LDAP as LDAP / AD
     participant Session as In-memory Session
     participant UI as Consul UI JS
-    participant Proxy as Consul Change Logger Proxy
     participant Cache as Read Cache
     participant Consul as Existing Consul KV API
     participant Outbox as Outbox
     participant Worker as Dispatch Worker
     participant ES as Elasticsearch
 
-    Browser->>Login: GET /login
-    Login-->>Browser: Login form + CSRF token
-    Browser->>Login: POST /login username + password
-    Login->>LDAP: Direct bind
-    LDAP-->>Login: Bind success
-    Login->>Session: Create opaque session id
-    Login-->>Browser: Set session cookie and redirect /ui/
+    Browser->>CCL: GET /login
+    CCL-->>Browser: Login form + CSRF token
+    Browser->>CCL: POST /login username + password
+    CCL->>LDAP: Direct bind
+    LDAP-->>CCL: Bind success
+    CCL->>Session: Create opaque session id
+    CCL-->>Browser: Set session cookie and redirect /ui/
 
-    Browser->>Proxy: GET /ui/
-    Proxy->>Session: Validate session cookie
-    Session-->>Proxy: Authenticated user
-    Proxy->>Consul: Forward /ui/ request
-    Consul-->>Proxy: Consul UI HTML + JS
-    Proxy-->>Browser: Return Consul UI
+    Browser->>CCL: GET /ui/
+    CCL->>Session: Validate session cookie
+    Session-->>CCL: Authenticated user
+    CCL->>Consul: Forward /ui/ request
+    Consul-->>CCL: Consul UI HTML + JS
+    CCL-->>Browser: Return Consul UI with injected script
 
-    UI->>Proxy: GET /v1/kv/app/key?raw + UI marker header
-    Note over UI,Proxy: Browser API calls are marked by the injected script and require a valid session
-    Proxy->>Consul: Forward GET
-    Consul-->>Proxy: Current value
-    Proxy->>Cache: Store old_value by user + client + key
-    Proxy-->>UI: Return response
+    UI->>CCL: GET /v1/kv/app/key?raw + UI marker header
+    Note over UI,CCL: Browser API calls are marked by the injected script and require a valid session
+    CCL->>Session: Validate session cookie
+    Session-->>CCL: Authenticated user
+    CCL->>Consul: Forward GET
+    Consul-->>CCL: Current value
+    CCL->>Cache: Store old_value by user + client + key
+    CCL-->>UI: Return response
 
-    UI->>Proxy: PUT /v1/kv/app/key + UI marker header
-    Note over UI,Proxy: Audit capture runs only for authenticated marked browser requests
-    Proxy->>Cache: Check cached old_value
+    UI->>CCL: PUT /v1/kv/app/key + UI marker header
+    Note over UI,CCL: Audit capture runs only for authenticated marked browser requests
+    CCL->>Session: Validate session cookie
+    Session-->>CCL: Authenticated user
+    CCL->>Cache: Check cached old_value
     alt cache miss and single-key mutation
-        Proxy->>Consul: Prefetch current value
-        Consul-->>Proxy: Current value or 404
-        Proxy->>Cache: Store prefetched old_value
+        CCL->>Consul: Prefetch current value
+        Consul-->>CCL: Current value or 404
+        CCL->>Cache: Store prefetched old_value
     end
-    Proxy->>Consul: Forward PUT
-    Consul-->>Proxy: Write result
-    Proxy-->>UI: Return write result
-    Proxy->>Proxy: Build ChangeRecord from request, response, user, old_value
-    Proxy->>Outbox: Persist JSON file first
-    Proxy->>Worker: Enqueue outbox file path
+    CCL->>Consul: Forward PUT
+    Consul-->>CCL: Write result
+    CCL-->>UI: Return write result
+    CCL->>CCL: Build ChangeRecord from request, response, user, old_value
+    CCL->>Outbox: Persist JSON file first
+    CCL->>Worker: Enqueue outbox file path
     loop until accepted
         Worker->>ES: PUT document
         ES-->>Worker: 2xx or failure
