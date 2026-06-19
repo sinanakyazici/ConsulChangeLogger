@@ -2,6 +2,11 @@
 
 [![CI](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
