@@ -7,6 +7,7 @@
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+[![Security Hotspots](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=security_hotspots)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
