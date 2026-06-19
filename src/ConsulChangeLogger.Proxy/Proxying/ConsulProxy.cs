@@ -11,11 +11,21 @@ namespace ConsulChangeLogger.Proxy.Proxying;
 
 internal sealed class ConsulProxy
 {
-    private const string KvWriteAction = "kv_write";
-    private const string KvDeleteAction = "kv_delete";
-    private const string KvOtherAction = "kv_other";
-
     private sealed record MutationPrefetchState(bool WasChecked, bool ValueExists);
+    private sealed record CaptureContext(
+        string SourcePath,
+        string Action,
+        string Timestamp,
+        string EventId,
+        string RequestId,
+        string KvKey,
+        string? ClientIp,
+        string? UserEmail,
+        string UserAgent,
+        string Identity,
+        string ResponseBody,
+        int ResponseCode,
+        bool IsFolder);
 
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -98,18 +108,20 @@ internal sealed class ConsulProxy
             await WriteDownstreamResponseAsync(upstreamResponse, responseBodyBytes);
             await CaptureChangeRecordAsync(requestBody, upstreamResponse, responseBodyBytes, mutationPrefetchState);
         }
-        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
         {
             Log.Debug(
+                ex,
                 "Request was canceled by client while proxying {Method} {Path}{Query} for {Username}",
                 context.Request.Method,
                 context.Request.Path,
                 context.Request.QueryString,
                 context.User.Identity?.Name);
         }
-        catch (TaskCanceledException) when (!context.RequestAborted.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!context.RequestAborted.IsCancellationRequested)
         {
             Log.Warning(
+                ex,
                 "Consul upstream timed out for {Method} {Path}{Query} after {TimeoutSeconds} seconds. User={Username}",
                 context.Request.Method,
                 context.Request.Path,
@@ -243,21 +255,16 @@ internal sealed class ConsulProxy
 
     private void CopyResponseHeaders(HttpResponseMessage upstreamResponse, bool includeContentLength)
     {
-        foreach (var header in upstreamResponse.Headers)
+        foreach (var header in upstreamResponse.Headers.Where(header => !HopByHopHeaders.Contains(header.Key)))
         {
-            if (!HopByHopHeaders.Contains(header.Key))
-            {
-                context.Response.Headers[header.Key] = header.Value.ToArray();
-            }
+            context.Response.Headers[header.Key] = header.Value.ToArray();
         }
 
-        foreach (var header in upstreamResponse.Content.Headers)
+        foreach (var header in upstreamResponse.Content.Headers.Where(header =>
+            !HopByHopHeaders.Contains(header.Key) &&
+            (includeContentLength || !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))))
         {
-            if (!HopByHopHeaders.Contains(header.Key) &&
-                (includeContentLength || !header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
-            {
-                context.Response.Headers[header.Key] = header.Value.ToArray();
-            }
+            context.Response.Headers[header.Key] = header.Value.ToArray();
         }
     }
 
@@ -270,7 +277,7 @@ internal sealed class ConsulProxy
 
         var sourcePath = context.Request.Path + context.Request.QueryString;
         var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
-        if (action is not (KvWriteAction or KvDeleteAction))
+        if (action is not (ConsulKvChangeHelpers.KvWriteAction or ConsulKvChangeHelpers.KvDeleteAction))
         {
             return new MutationPrefetchState(false, false);
         }
@@ -414,12 +421,98 @@ internal sealed class ConsulProxy
         }
 
         var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
-        if (action == KvOtherAction)
+        if (action == ConsulKvChangeHelpers.KvOtherAction)
         {
             Log.Debug("Skipping audit capture for unsupported KV action {Method} {Path}", context.Request.Method, sourcePath);
             return;
         }
 
+        var captureContext = BuildCaptureContext(sourcePath, action, upstreamResponse, responseBodyBytes);
+
+        if (captureContext.Action == ConsulKvChangeHelpers.KvReadAction && ConsulKvChangeHelpers.IsSuccess(captureContext.ResponseCode))
+        {
+            CacheReadValue(captureContext);
+            return;
+        }
+
+        if (captureContext.Action is not (ConsulKvChangeHelpers.KvWriteAction or ConsulKvChangeHelpers.KvDeleteAction))
+        {
+            Log.Debug("Skipping audit capture after method normalization for action {Action}", captureContext.Action);
+            return;
+        }
+
+        var read = readCache.Get(captureContext.Identity);
+        var newValue = captureContext.Action == ConsulKvChangeHelpers.KvWriteAction ? requestBody : null;
+        var newValueJson = ConsulKvChangeHelpers.InspectJson(newValue);
+        var isCreate = captureContext.Action == ConsulKvChangeHelpers.KvWriteAction && mutationPrefetchState.WasChecked && !mutationPrefetchState.ValueExists;
+        var isUpdate = captureContext.Action == ConsulKvChangeHelpers.KvWriteAction && mutationPrefetchState.WasChecked && mutationPrefetchState.ValueExists;
+        var isDelete = captureContext.Action == ConsulKvChangeHelpers.KvDeleteAction;
+        var changeRecord = new ChangeRecord
+        {
+            Timestamp = captureContext.Timestamp,
+            EventId = captureContext.EventId,
+            Action = captureContext.Action,
+            KvKey = captureContext.KvKey,
+            IsFolder = captureContext.IsFolder,
+            OldValue = read?.Value,
+            OldValueObservedAt = read?.SeenAt,
+            NewValue = newValue,
+            NewValueJsonError = newValueJson.Error,
+            IsCreate = isCreate,
+            IsUpdate = isUpdate,
+            IsDelete = isDelete,
+            IsSuccess = ConsulKvChangeHelpers.IsSuccess(captureContext.ResponseCode),
+            ResponseStatusCode = captureContext.ResponseCode,
+            ClientIp = captureContext.ClientIp,
+            UserEmail = captureContext.UserEmail,
+            UserAgent = captureContext.UserAgent,
+            RequestId = captureContext.RequestId,
+            SourcePath = captureContext.SourcePath
+        };
+
+        if (captureContext.Action == ConsulKvChangeHelpers.KvWriteAction && newValueJson is { LooksLikeJson: true, IsValidJson: false })
+        {
+            Log.Warning(
+                "Detected invalid JSON payload for KV write. Key={Key} User={Username} RequestId={RequestId} Error={JsonError}",
+                captureContext.KvKey,
+                captureContext.UserEmail,
+                captureContext.RequestId,
+                newValueJson.Error);
+        }
+
+        if (isCreate)
+        {
+            Log.Information(
+                "Detected first-time KV creation for {Key} by {Username}. RequestId={RequestId}",
+                captureContext.KvKey,
+                captureContext.UserEmail,
+                captureContext.RequestId);
+        }
+
+        if (isUpdate)
+        {
+            Log.Information(
+                "Detected KV update for {Key} by {Username}. RequestId={RequestId}",
+                captureContext.KvKey,
+                captureContext.UserEmail,
+                captureContext.RequestId);
+        }
+
+        await changeRecordSink.SendAsync(changeRecord, context.RequestAborted);
+        Log.Information(
+            "Queued audit record Action={Action} Key={Key} IsCreate={IsCreate} IsUpdate={IsUpdate} IsDelete={IsDelete} IsSuccess={IsSuccess} User={Username} RequestId={RequestId}",
+            captureContext.Action,
+            captureContext.KvKey,
+            isCreate,
+            isUpdate,
+            isDelete,
+            changeRecord.IsSuccess,
+            captureContext.UserEmail,
+            captureContext.RequestId);
+    }
+
+    private CaptureContext BuildCaptureContext(string sourcePath, string action, HttpResponseMessage upstreamResponse, byte[] responseBodyBytes)
+    {
         var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
         var eventId = Guid.NewGuid().ToString("N");
         var requestId = context.Request.Headers.TryGetValue("X-Request-ID", out var value) && !string.IsNullOrWhiteSpace(value)
@@ -430,97 +523,33 @@ internal sealed class ConsulProxy
         var userEmail = context.User.FindFirstValue(ClaimTypes.Email) ?? context.User.Identity?.Name;
         var userAgent = context.Request.Headers.UserAgent.ToString();
         var identity = ConsulKvChangeHelpers.ReadIdentity(clientIp, userAgent, kvKey, userEmail);
-        var responseBody = Encoding.UTF8.GetString(responseBodyBytes);
-        var responseCode = (int)upstreamResponse.StatusCode;
-        var isFolder = ConsulKvChangeHelpers.IsFolderKey(kvKey);
 
-        if (action == "kv_read" && ConsulKvChangeHelpers.IsSuccess(responseCode))
-        {
-            var oldValue = ConsulKvChangeHelpers.ExtractReadValue(sourcePath, responseBody);
-            readCache.Store(identity, oldValue, timestamp, requestId);
-            Log.Debug(
-                "Cached KV read for {Key} by {Username}. RequestId={RequestId} OldValuePresent={OldValuePresent}",
-                kvKey,
-                userEmail,
-                requestId,
-                oldValue is not null);
-            return;
-        }
-
-        if (action is not (KvWriteAction or KvDeleteAction))
-        {
-            Log.Debug("Skipping audit capture after method normalization for action {Action}", action);
-            return;
-        }
-
-        var read = readCache.Get(identity);
-        var newValue = action == "kv_write" ? requestBody : null;
-        var newValueJson = ConsulKvChangeHelpers.InspectJson(newValue);
-        var isCreate = action == "kv_write" && mutationPrefetchState.WasChecked && !mutationPrefetchState.ValueExists;
-        var isUpdate = action == "kv_write" && mutationPrefetchState.WasChecked && mutationPrefetchState.ValueExists;
-        var isDelete = action == "kv_delete";
-        var changeRecord = new ChangeRecord
-        {
-            Timestamp = timestamp,
-            EventId = eventId,
-            Action = action,
-            KvKey = kvKey,
-            IsFolder = isFolder,
-            OldValue = read?.Value,
-            OldValueObservedAt = read?.SeenAt,
-            NewValue = newValue,
-            NewValueJsonError = newValueJson.Error,
-            IsCreate = isCreate,
-            IsUpdate = isUpdate,
-            IsDelete = isDelete,
-            IsSuccess = ConsulKvChangeHelpers.IsSuccess(responseCode),
-            ResponseStatusCode = responseCode,
-            ClientIp = clientIp,
-            UserEmail = userEmail,
-            UserAgent = userAgent,
-            RequestId = requestId,
-            SourcePath = sourcePath
-        };
-
-        if (action == "kv_write" && newValueJson is { LooksLikeJson: true, IsValidJson: false })
-        {
-            Log.Warning(
-                "Detected invalid JSON payload for KV write. Key={Key} User={Username} RequestId={RequestId} Error={JsonError}",
-                kvKey,
-                userEmail,
-                requestId,
-                newValueJson.Error);
-        }
-
-        if (isCreate)
-        {
-            Log.Information(
-                "Detected first-time KV creation for {Key} by {Username}. RequestId={RequestId}",
-                kvKey,
-                userEmail,
-                requestId);
-        }
-
-        if (isUpdate)
-        {
-            Log.Information(
-                "Detected KV update for {Key} by {Username}. RequestId={RequestId}",
-                kvKey,
-                userEmail,
-                requestId);
-        }
-
-        await changeRecordSink.SendAsync(changeRecord, context.RequestAborted);
-        Log.Information(
-            "Queued audit record Action={Action} Key={Key} IsCreate={IsCreate} IsUpdate={IsUpdate} IsDelete={IsDelete} IsSuccess={IsSuccess} User={Username} RequestId={RequestId}",
+        return new CaptureContext(
+            sourcePath,
             action,
+            timestamp,
+            eventId,
+            requestId,
             kvKey,
-            isCreate,
-            isUpdate,
-            isDelete,
-            changeRecord.IsSuccess,
+            clientIp,
             userEmail,
-            requestId);
+            userAgent,
+            identity,
+            Encoding.UTF8.GetString(responseBodyBytes),
+            (int)upstreamResponse.StatusCode,
+            ConsulKvChangeHelpers.IsFolderKey(kvKey));
+    }
+
+    private void CacheReadValue(CaptureContext captureContext)
+    {
+        var oldValue = ConsulKvChangeHelpers.ExtractReadValue(captureContext.SourcePath, captureContext.ResponseBody);
+        readCache.Store(captureContext.Identity, oldValue, captureContext.Timestamp, captureContext.RequestId);
+        Log.Debug(
+            "Cached KV read for {Key} by {Username}. RequestId={RequestId} OldValuePresent={OldValuePresent}",
+            captureContext.KvKey,
+            captureContext.UserEmail,
+            captureContext.RequestId,
+            oldValue is not null);
     }
 
     private static bool IsClientDisconnect(IOException exception) =>

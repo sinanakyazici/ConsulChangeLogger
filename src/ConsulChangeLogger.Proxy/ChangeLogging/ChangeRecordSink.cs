@@ -61,9 +61,9 @@ internal sealed class ChangeRecordSink
             {                              
                 Log.Error(ex, "Failed to connect to Elasticsearch at {ElasticsearchUrl}", elasticsearchConfiguration.Url);
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                Log.Warning("Elasticsearch health probe timed out for {ElasticsearchUrl}", elasticsearchConfiguration.Url);
+                Log.Warning(ex, "Elasticsearch health probe timed out for {ElasticsearchUrl}", elasticsearchConfiguration.Url);
             }
 
             Log.Information("Waiting for Elasticsearch");

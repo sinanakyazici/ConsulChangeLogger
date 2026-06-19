@@ -103,8 +103,9 @@ app.MapGet(JsonValidationClientScript.Path, () =>
 {
     return Results.Text(JsonValidationClientScript.Content, "application/javascript; charset=utf-8");
 });
-app.Map("/{**path}", async context =>
+app.Map("/{**path}", async (HttpContext context, string? path) =>
 {
+    _ = path;
     var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
     if (bootstrapOptions.Authentication!.Value &&
         !isAuthenticated &&

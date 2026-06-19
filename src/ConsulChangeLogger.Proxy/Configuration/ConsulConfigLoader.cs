@@ -127,7 +127,7 @@ internal static class ConsulConfigLoader
                 "Waiting for Consul availability at {ConsulUrl}; retrying in {RetryDelaySeconds} seconds. Reason: {Reason}",
                 bootstrapOptions.ConsulUpstreamUrl,
                 RetryDelay.TotalSeconds,
-                lastError?.Message ?? "unknown");
+                lastError.Message);
 
             await Task.Delay(RetryDelay, cancellationToken);
         }

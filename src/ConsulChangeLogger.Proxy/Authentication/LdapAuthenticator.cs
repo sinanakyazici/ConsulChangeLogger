@@ -103,7 +103,7 @@ internal sealed class LdapAuthenticator
                 options.Domain,
                 port,
                 RetryDelay.TotalSeconds,
-                lastError?.Message ?? "unknown");
+                lastError.Message);
 
             await Task.Delay(RetryDelay, cancellationToken);
         }

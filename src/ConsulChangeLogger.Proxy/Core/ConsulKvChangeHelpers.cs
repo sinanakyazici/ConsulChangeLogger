@@ -5,6 +5,11 @@ namespace ConsulChangeLogger.Proxy;
 
 public static class ConsulKvChangeHelpers
 {
+    public const string KvReadAction = "kv_read";
+    public const string KvWriteAction = "kv_write";
+    public const string KvDeleteAction = "kv_delete";
+    public const string KvOtherAction = "kv_other";
+
     public sealed record JsonInspection(bool LooksLikeJson, bool? IsValidJson, string? Error);
 
     public static bool IsSuccess(int statusCode) => statusCode is >= 200 and < 300;
@@ -35,10 +40,10 @@ public static class ConsulKvChangeHelpers
 
     public static string KvAction(string method) => method.ToUpperInvariant() switch
     {
-        "GET" => "kv_read",
-        "PUT" => "kv_write",
-        "DELETE" => "kv_delete",
-        _ => "kv_other"
+        "GET" => KvReadAction,
+        "PUT" => KvWriteAction,
+        "DELETE" => KvDeleteAction,
+        _ => KvOtherAction
     };
 
     public static string ReadIdentity(string? clientIp, string? userAgent, string? kvKey, string? userEmail = null) =>
