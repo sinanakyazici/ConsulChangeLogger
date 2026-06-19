@@ -1,9 +1,12 @@
 # Consul Change Logger
 
+**Pipeline**  
 [![CI](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/codeql.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/codeql.yml)
 [![SonarCloud](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/sonarcloud.yml)
 [![Release-publish](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/release.yml/badge.svg)](https://github.com/sinanakyazici/ConsulChangeLogger/actions/workflows/release.yml)
+
+**Quality And Security**  
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
@@ -11,10 +14,15 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
 [![Duplicated Lines](https://sonarcloud.io/api/project_badges/measure?project=sinanakyazici_ConsulChangeLogger&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=sinanakyazici_ConsulChangeLogger)
+
+**Distribution**  
+[![Release](https://img.shields.io/github/v/release/sinanakyazici/ConsulChangeLogger?label=release)](https://github.com/sinanakyazici/ConsulChangeLogger/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
+[![GHCR](https://img.shields.io/badge/GHCR-consul--change--logger-2496ED)](https://github.com/sinanakyazici/ConsulChangeLogger/pkgs/container/consul-change-logger)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-sinanakyazici%2Fconsul--change--logger-2496ED.svg)](https://hub.docker.com/r/sinanakyazici/consul-change-logger)
+[![Helm Chart](https://img.shields.io/badge/Helm%20Chart-GHCR%20OCI-0F1689)](https://github.com/sinanakyazici/ConsulChangeLogger/pkgs/container/charts%2Fconsul-change-logger)
 [![Docker Scout](https://img.shields.io/badge/Docker%20Scout-0C%200H%200M%200L-brightgreen.svg)](https://hub.docker.com/r/sinanakyazici/consul-change-logger)
 
 Consul Change Logger is an ASP.NET Core reverse proxy that sits in front of Consul UI and the Consul HTTP API, authenticates browser users with LDAP, forwards allowed traffic to Consul, and records Consul KV write and delete activity into Elasticsearch.
