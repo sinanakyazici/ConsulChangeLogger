@@ -11,6 +11,10 @@ namespace ConsulChangeLogger.Proxy.Proxying;
 
 internal sealed class ConsulProxy
 {
+    private const string KvWriteAction = "kv_write";
+    private const string KvDeleteAction = "kv_delete";
+    private const string KvOtherAction = "kv_other";
+
     private sealed record MutationPrefetchState(bool WasChecked, bool ValueExists);
 
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
@@ -266,7 +270,7 @@ internal sealed class ConsulProxy
 
         var sourcePath = context.Request.Path + context.Request.QueryString;
         var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
-        if (action is not ("kv_write" or "kv_delete"))
+        if (action is not (KvWriteAction or KvDeleteAction))
         {
             return new MutationPrefetchState(false, false);
         }
@@ -343,9 +347,9 @@ internal sealed class ConsulProxy
         {
             Log.Warning(ex, "Failed to prefetch old_value for {Path}", sourcePath);
         }
-        catch (TaskCanceledException) when (!context.RequestAborted.IsCancellationRequested)
+        catch (TaskCanceledException ex) when (!context.RequestAborted.IsCancellationRequested)
         {
-            Log.Warning("Timed out while prefetching old_value for {Path}", sourcePath);
+            Log.Warning(ex, "Timed out while prefetching old_value for {Path}", sourcePath);
         }
 
         return new MutationPrefetchState(false, false);
@@ -410,7 +414,7 @@ internal sealed class ConsulProxy
         }
 
         var action = ConsulKvChangeHelpers.KvAction(context.Request.Method);
-        if (action == "kv_other")
+        if (action == KvOtherAction)
         {
             Log.Debug("Skipping audit capture for unsupported KV action {Method} {Path}", context.Request.Method, sourcePath);
             return;
@@ -443,7 +447,7 @@ internal sealed class ConsulProxy
             return;
         }
 
-        if (action is not ("kv_write" or "kv_delete"))
+        if (action is not (KvWriteAction or KvDeleteAction))
         {
             Log.Debug("Skipping audit capture after method normalization for action {Action}", action);
             return;

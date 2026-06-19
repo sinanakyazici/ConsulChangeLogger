@@ -128,7 +128,7 @@ internal sealed class LdapAuthenticator
         return new LdapConnection(connectionOptions);
     }
 
-    private bool RemoteCertValidation(
+    private static bool RemoteCertValidation(
         object? sender,
         X509Certificate? certificate,
         X509Chain? chain,

@@ -65,21 +65,11 @@ internal static class ConsulConfigLoader
                     $"Timed out while reading Consul configuration key '{bootstrapOptions.ConfigKey}'.");
             }
 
-            if (lastError is null)
-            {
-                Log.Warning(
-                    "Consul configuration key {ConfigKey} is not ready yet; retrying in {RetryDelaySeconds} seconds",
-                    bootstrapOptions.ConfigKey,
-                    RetryDelay.TotalSeconds);
-            }
-            else
-            {
-                Log.Warning(
-                    "Consul configuration is not ready; retrying key {ConfigKey} in {RetryDelaySeconds} seconds. Reason: {Reason}",
-                    bootstrapOptions.ConfigKey,
-                    RetryDelay.TotalSeconds,
-                    lastError.Message);
-            }
+            Log.Warning(
+                "Consul configuration is not ready; retrying key {ConfigKey} in {RetryDelaySeconds} seconds. Reason: {Reason}",
+                bootstrapOptions.ConfigKey,
+                RetryDelay.TotalSeconds,
+                lastError.Message);
 
             await Task.Delay(RetryDelay, cancellationToken);
         }

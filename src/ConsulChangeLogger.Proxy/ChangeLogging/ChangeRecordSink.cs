@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Globalization;
 using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.Configuration;
 using Serilog;
@@ -10,6 +11,9 @@ namespace ConsulChangeLogger.Proxy.ChangeLogging;
 
 internal sealed class ChangeRecordSink
 {
+    private const string KeywordType = "keyword";
+    private const string BooleanType = "boolean";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = null,
@@ -77,24 +81,24 @@ internal sealed class ChangeRecordSink
         var properties = new Dictionary<string, object>
         {
             ["@timestamp"] = new { type = "date" },
-            ["event_id"] = new { type = "keyword" },
-            ["action"] = new { type = "keyword" },
-            ["kv_key"] = new { type = "keyword" },
-            ["is_folder"] = new { type = "boolean" },
+            ["event_id"] = new { type = KeywordType },
+            ["action"] = new { type = KeywordType },
+            ["kv_key"] = new { type = KeywordType },
+            ["is_folder"] = new { type = BooleanType },
             ["old_value"] = new { type = "text" },
             ["old_value_observed_at"] = new { type = "date" },
             ["new_value"] = new { type = "text" },
             ["new_value_json_error"] = new { type = "text" },
-            ["is_create"] = new { type = "boolean" },
-            ["is_update"] = new { type = "boolean" },
-            ["is_delete"] = new { type = "boolean" },
-            ["is_success"] = new { type = "boolean" },
+            ["is_create"] = new { type = BooleanType },
+            ["is_update"] = new { type = BooleanType },
+            ["is_delete"] = new { type = BooleanType },
+            ["is_success"] = new { type = BooleanType },
             ["response_status_code"] = new { type = "integer" },
             ["client_ip"] = new { type = "ip" },
-            ["user_email"] = new { type = "keyword" },
-            ["user_agent"] = new { type = "keyword" },
-            ["request_id"] = new { type = "keyword" },
-            ["source"] = new { type = "keyword" }
+            ["user_email"] = new { type = KeywordType },
+            ["user_agent"] = new { type = KeywordType },
+            ["request_id"] = new { type = KeywordType },
+            ["source"] = new { type = KeywordType }
         };
 
         var mapping = new
@@ -148,8 +152,7 @@ internal sealed class ChangeRecordSink
             mappingResponse.EnsureSuccessStatusCode();
         }
 
-        Log.Information("Elasticsearch mapping for index {IndexName} is up to date", elasticsearchConfiguration.Index);
-        Log.Information("Elasticsearch index {IndexName} is ready", elasticsearchConfiguration.Index);
+        Log.Information("Elasticsearch index {IndexName} and mapping are ready", elasticsearchConfiguration.Index);
     }
 
     private static bool IsIndexAlreadyExists(string body)
@@ -159,8 +162,9 @@ internal sealed class ChangeRecordSink
             var node = JsonNode.Parse(body);
             return node?["error"]?["type"]?.GetValue<string>() == "resource_already_exists_exception";
         }
-        catch (JsonException)
+        catch (JsonException error)
         {
+            Log.Debug(error, "Failed to parse Elasticsearch index response while checking resource_already_exists_exception");
             return false;
         }
     }
@@ -197,7 +201,7 @@ internal sealed class ChangeRecordSink
     }
 
     private static DateTimeOffset ReadTimestamp(string timestamp) =>
-        DateTimeOffset.TryParse(timestamp, out var parsed)
+        DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
             ? parsed
             : DateTimeOffset.UtcNow;
 

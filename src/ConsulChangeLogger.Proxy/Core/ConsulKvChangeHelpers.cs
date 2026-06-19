@@ -31,7 +31,7 @@ public static class ConsulKvChangeHelpers
     }
 
     public static bool IsFolderKey(string? kvKey) =>
-        !string.IsNullOrWhiteSpace(kvKey) && kvKey.EndsWith("/", StringComparison.Ordinal);
+        !string.IsNullOrWhiteSpace(kvKey) && kvKey.EndsWith('/');
 
     public static string KvAction(string method) => method.ToUpperInvariant() switch
     {
@@ -147,7 +147,7 @@ public static class ConsulKvChangeHelpers
         return $"{cleanPath}?{string.Join("&", items)}";
     }
 
-    private static IEnumerable<KeyValuePair<string, List<string?>>> ParseQueryString(string query)
+    private static Dictionary<string, List<string?>> ParseQueryString(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {

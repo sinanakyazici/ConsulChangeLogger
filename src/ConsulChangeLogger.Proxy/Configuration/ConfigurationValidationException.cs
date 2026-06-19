@@ -1,6 +1,6 @@
 namespace ConsulChangeLogger.Proxy.Configuration;
 
-internal sealed class ConfigurationValidationException : Exception
+public sealed class ConfigurationValidationException : Exception
 {
     public IReadOnlyList<string> Errors { get; }
 

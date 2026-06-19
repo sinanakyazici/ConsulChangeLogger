@@ -24,8 +24,9 @@ public sealed class ChangeRecordOutboxTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(first)!);
         Directory.CreateDirectory(Path.GetDirectoryName(second)!);
         File.WriteAllText(first, "{}");
-        Thread.Sleep(20);
         File.WriteAllText(second, "{}");
+        File.SetCreationTimeUtc(first, new DateTime(2026, 6, 16, 10, 0, 0, DateTimeKind.Utc));
+        File.SetCreationTimeUtc(second, new DateTime(2026, 6, 16, 10, 0, 1, DateTimeKind.Utc));
 
         var files = ChangeRecordOutbox.EnumeratePendingFiles(rootPath).ToArray();
 

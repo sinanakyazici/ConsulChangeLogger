@@ -46,7 +46,7 @@ builder.Services.AddHostedService<ChangeRecordDispatchWorker>();
 
 builder.Services.AddHttpClient("consul", client => HttpClientConfigurator.ConfigureConsul(client, bootstrapOptions));
 
-var elasticsearchClient = builder.Services.AddHttpClient("elasticsearch", client =>
+builder.Services.AddHttpClient("elasticsearch", client =>
     HttpClientConfigurator.ConfigureElasticsearch(client, runtimeConfig.Elasticsearch))
     .ConfigurePrimaryHttpMessageHandler(HttpClientConfigurator.CreateElasticsearchHandler);
 

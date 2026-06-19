@@ -125,9 +125,10 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
                     changeRecord.EventId,
                     attempt);
             }
-            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (TaskCanceledException error) when (!cancellationToken.IsCancellationRequested)
             {
                 Log.Warning(
+                    error,
                     "Timed out sending change record EventId={EventId} to Elasticsearch on attempt {Attempt}",
                     changeRecord.EventId,
                     attempt);
@@ -154,11 +155,13 @@ internal sealed class ChangeRecordDispatchWorker : BackgroundService
             Directory.Delete(directory);
             Log.Debug("Deleted empty outbox directory {Directory}", directory);
         }
-        catch (IOException)
+        catch (IOException error)
         {
+            Log.Debug(error, "Failed to delete empty outbox directory {Directory}", directory);
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException error)
         {
+            Log.Debug(error, "Failed to delete empty outbox directory {Directory}", directory);
         }
     }
 }
