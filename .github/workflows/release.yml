@@ -27,17 +27,11 @@ jobs:
       dockerhub_image: ${{ steps.detect.outputs.dockerhub_image }}
 
     steps:
-      - name: Checkout triggering commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-
       - name: Detect semantic version tag
         id: detect
         shell: bash
         run: |
-          TAG="$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+          TAG="$(git ls-remote --tags "https://github.com/${{ github.repository }}.git" | awk -v sha="${{ github.event.workflow_run.head_sha }}" '$1 == sha { sub("refs/tags/", "", $2); print $2 }' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
           if [[ -z "$TAG" ]]; then
             echo "should_release=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -66,12 +60,6 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
     steps:
-      - name: Checkout triggering commit
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-
       - name: Setup Helm
         uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
 

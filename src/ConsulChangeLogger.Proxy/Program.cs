@@ -75,18 +75,23 @@ var ldapPort = runtimeConfig.LdapConfiguration.UseSSL!.Value
     ? runtimeConfig.LdapConfiguration.SecurePort!.Value
     : runtimeConfig.LdapConfiguration.Port!.Value;
 
-Log.Information(
-    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} LdapHost={LdapHost} LdapPort={LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled} LogLevel={LogLevel} MicrosoftLogLevel={MicrosoftLogLevel} SystemLogLevel={SystemLogLevel}",
-    ApplicationVersion.Current,
-    bootstrapOptions.ConsulUpstreamUrl,
-    runtimeConfig.Elasticsearch.Url,
-    runtimeConfig.LdapConfiguration.Domain,
-    ldapPort,
+var startupInfo = new
+{
+    Version = ApplicationVersion.Current,
+    ConsulUrl = bootstrapOptions.ConsulUpstreamUrl,
+    ElasticsearchUrl = runtimeConfig.Elasticsearch.Url,
+    LdapHost = runtimeConfig.LdapConfiguration.Domain,
+    LdapPort = ldapPort,
     runtimeConfig.LdapConfiguration.UseSSL,
-    bootstrapOptions.Authentication!.Value,
-    logLevelOptions.Default,
-    logLevelOptions.Microsoft,
-    logLevelOptions.System);
+    AuthenticationEnabled = bootstrapOptions.Authentication!.Value,
+    LogLevel = logLevelOptions.Default,
+    MicrosoftLogLevel = logLevelOptions.Microsoft,
+    SystemLogLevel = logLevelOptions.System
+};
+
+Log.Information(
+    "Consul Change Logger starting {@StartupInfo}",
+    startupInfo);
 
 using (var scope = app.Services.CreateScope())
 {
