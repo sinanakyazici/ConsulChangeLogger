@@ -63,7 +63,7 @@ internal static class AuthenticationEndpoints
                     HttpOnly = true,
                     IsEssential = true,
                     SameSite = SameSiteMode.Lax,
-                    Secure = context.Request.IsHttps
+                    Secure = true
                 });
                 context.Response.Redirect("/ui/");
                 return;
