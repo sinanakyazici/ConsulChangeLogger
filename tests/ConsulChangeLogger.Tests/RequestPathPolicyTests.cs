@@ -28,4 +28,23 @@ public sealed class RequestPathPolicyTests
     {
         Assert.Equal(expected, RequestPathPolicy.IsConsulApiPath(new PathString(path)));
     }
+
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("TRUE", true)]
+    [InlineData("false", false)]
+    [InlineData("", false)]
+    public void IsMarkedUiRequest_ReturnsExpectedResult(string headerValue, bool expected)
+    {
+        var headers = new HeaderDictionary();
+        headers[RequestPathPolicy.UiRequestHeaderName] = headerValue;
+
+        Assert.Equal(expected, RequestPathPolicy.IsMarkedUiRequest(headers));
+    }
+
+    [Fact]
+    public void IsMarkedUiRequest_ReturnsFalse_WhenHeaderIsMissing()
+    {
+        Assert.False(RequestPathPolicy.IsMarkedUiRequest(new HeaderDictionary()));
+    }
 }

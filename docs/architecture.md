@@ -72,13 +72,15 @@ Important properties:
 Current request boundary:
 
 - requests to `/` and `/ui/*` require an authenticated browser session
-- unauthenticated requests to `/v1/*` are forwarded to the Consul HTTP API without forcing a login
-- unauthenticated `/v1/*` requests use a fast pass-through path and do not enter read cache, prefetch, audit capture, outbox, or Elasticsearch dispatch logic
-- authenticated browser `/v1/kv/*` requests can be audited because they carry the UI session
+- the injected Consul UI client script marks browser-originated `/v1/*` calls with `X-Consul-Change-Logger-UI: true`
+- marked `/v1/*` requests require an authenticated browser session
+- unmarked unauthenticated requests to `/v1/*` are forwarded to the Consul HTTP API without forcing a login
+- unmarked `/v1/*` requests use a fast pass-through path and do not enter read cache, prefetch, audit capture, outbox, or Elasticsearch dispatch logic
+- authenticated marked browser `/v1/kv/*` requests can be audited because they carry the UI session
 
 The proxy copies request headers, body, and method, then writes the upstream response back to the browser.
 
-Non-mutating UI/API traffic passes through as normal. Authenticated browser KV mutation traffic is additionally observed by the audit pipeline. Application traffic that calls `/v1/*` without the browser session is only proxied.
+Non-mutating UI/API traffic passes through as normal. Authenticated browser KV mutation traffic is additionally observed by the audit pipeline. Application traffic that calls `/v1/*` without the UI marker header is only proxied.
 
 The practical browser flow is:
 
@@ -96,6 +98,8 @@ When the Consul UI HTML shell is returned, the proxy injects a small JavaScript 
 That script:
 
 - intercepts `fetch` and `XMLHttpRequest`
+- adds `X-Consul-Change-Logger-UI: true` to browser-originated `/v1/*` requests
+- redirects the browser to `/login` when a marked `/v1/*` request receives `401`
 - watches `PUT /v1/kv/...` requests
 - checks whether the body looks like JSON
 - if it looks like JSON but is invalid, shows a browser confirmation dialog
@@ -135,15 +139,15 @@ sequenceDiagram
     Consul-->>Proxy: Consul UI HTML + JS
     Proxy-->>Browser: Return Consul UI
 
-    UI->>Proxy: GET /v1/kv/app/key?raw
-    Note over UI,Proxy: In the browser flow this request typically carries the session cookie
+    UI->>Proxy: GET /v1/kv/app/key?raw + UI marker header
+    Note over UI,Proxy: Browser API calls are marked by the injected script and require a valid session
     Proxy->>Consul: Forward GET
     Consul-->>Proxy: Current value
     Proxy->>Cache: Store old_value by user + client + key
     Proxy-->>UI: Return response
 
-    UI->>Proxy: PUT /v1/kv/app/key
-    Note over UI,Proxy: Audit capture runs only when the request is authenticated
+    UI->>Proxy: PUT /v1/kv/app/key + UI marker header
+    Note over UI,Proxy: Audit capture runs only for authenticated marked browser requests
     Proxy->>Cache: Check cached old_value
     alt cache miss and single-key mutation
         Proxy->>Consul: Prefetch current value
@@ -163,7 +167,7 @@ sequenceDiagram
     Worker->>Outbox: Delete file only after Elasticsearch accepts it
 ```
 
-Authentication is part of the same browser request path. The browser cannot reach `/` or `/ui/*` through this product until the proxy has a valid in-memory session, unless `AUTHENTICATION=false` is explicitly configured. Requests to `/v1/*` are still passed through without forcing login so non-browser Consul clients are not blocked. When authentication is enabled, LDAP is used only for direct bind during login; later browser UI requests are authorized by the proxy session cookie.
+Authentication is part of the same browser request path. The browser cannot reach `/` or `/ui/*` through this product until the proxy has a valid in-memory session, unless `AUTHENTICATION=false` is explicitly configured. Unmarked requests to `/v1/*` are still passed through without forcing login so non-browser Consul clients are not blocked. Marked browser `/v1/*` requests require the proxy session cookie. When authentication is enabled, LDAP is used only for direct bind during login; later browser UI requests are authorized by the proxy session cookie.
 
 ### Read cache
 

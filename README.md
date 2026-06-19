@@ -208,9 +208,11 @@ This matches environments where applications authenticate directly against Activ
 When `AUTHENTICATION=true`, the current request boundary is:
 
 - `/` and `/ui/*` require an authenticated browser session
-- unauthenticated `/v1/*` requests use a fast pass-through path so non-browser Consul clients are not forced through the login screen
-- unauthenticated `/v1/*` requests are not audited and do not use the read cache, prefetch, outbox, or Elasticsearch dispatch path
-- authenticated browser `/v1/kv/*` requests can be audited because they carry the UI session
+- the injected Consul UI client script marks browser-originated `/v1/*` calls with `X-Consul-Change-Logger-UI: true`
+- marked `/v1/*` requests require an authenticated browser session; if the session is missing, the proxy returns `401` and the browser redirects to `/login`
+- unmarked `/v1/*` requests use a fast pass-through path so application Consul clients are not forced through the login screen
+- unmarked `/v1/*` requests are not audited and do not use the read cache, prefetch, outbox, or Elasticsearch dispatch path
+- authenticated marked browser `/v1/kv/*` requests can be audited because they carry the UI session
 
 This boundary is intentional. The product currently protects the browser UI path, not every possible Consul API caller that can reach the same endpoint.
 
@@ -277,11 +279,11 @@ Browser-side warning:
 - the browser asks whether the user still wants to continue
 
 The warning script is served from `/ui/_ccl/json-validation.js`, so the browser-facing route must send `/ui/*` traffic to Consul Change Logger.
-The same script injects a fixed `Logout` button into the Consul UI and posts to `/logout`.
+The same script injects a fixed `Logout` button into the Consul UI, posts to `/logout`, and marks browser-originated `/v1/*` calls with `X-Consul-Change-Logger-UI: true`.
 
 The proxy still allows the write if the user confirms.
 
-If an authenticated browser session expires while Consul UI is making background `fetch` or `XMLHttpRequest` calls, the injected client script now redirects the full page back to `/login`.
+If an authenticated browser session expires while Consul UI is making marked background `fetch` or `XMLHttpRequest` calls, the proxy returns `401` and the injected client script redirects the full page back to `/login`.
 
 This is a UI safeguard only. The server does not reject KV writes just because the payload is invalid JSON.
 
@@ -392,7 +394,8 @@ Expected behavior:
 
 - `/health/live` returns live
 - `/health/ready` returns ready
-- cookies-less `/v1/*` requests pass through without audit work
+- cookies-less unmarked `/v1/*` requests pass through without audit work
+- marked `/v1/*` requests without a valid UI session return `401`
 - a KV read followed by a KV write can populate best-effort `old_value`
 - invalid JSON-like values trigger a browser warning before save
 - successful audit events are written to the `consul-change-logger` index

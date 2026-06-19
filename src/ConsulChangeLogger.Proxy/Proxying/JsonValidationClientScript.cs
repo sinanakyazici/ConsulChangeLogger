@@ -11,6 +11,8 @@ internal static class JsonValidationClientScript
             "Girilen deger JSON gibi gorunuyor ancak gecerli degil.\n\nYine de kaydetmek istiyor musunuz?";
           let redirectingToLogin = false;
           let allowNextKvPutUntil = 0;
+          const uiRequestHeaderName = "X-Consul-Change-Logger-UI";
+          const uiRequestHeaderValue = "true";
 
           function isLoginUrl(url) {
             try {
@@ -102,12 +104,22 @@ internal static class JsonValidationClientScript
               return false;
             }
 
+            return isConsulApiUrl(url, "/v1/kv");
+          }
+
+          function isConsulApiUrl(url, prefix = "/v1") {
             try {
               const resolved = new URL(url, window.location.origin);
-              return resolved.pathname === "/v1/kv" || resolved.pathname.startsWith("/v1/kv/");
+              return resolved.pathname === prefix || resolved.pathname.startsWith(prefix + "/");
             } catch {
               return false;
             }
+          }
+
+          function withUiRequestHeader(headers) {
+            const updated = new Headers(headers || {});
+            updated.set(uiRequestHeaderName, uiRequestHeaderValue);
+            return updated;
           }
 
           function readCandidateValue(node) {
@@ -227,13 +239,25 @@ internal static class JsonValidationClientScript
             const url = typeof input === "string" ? input : input?.url;
             const method = init?.method || (typeof input !== "string" ? input?.method : "GET") || "GET";
             const body = init?.body;
+            const isUiApiRequest = isConsulApiUrl(url);
 
             if (typeof body === "string" && shouldCheck(method, url) && !confirmInvalidJson(body)) {
               throw new DOMException("JSON validation cancelled by user.", "AbortError");
             }
 
-            const response = await originalFetch(input, init);
-            if (response.redirected && isLoginUrl(response.url)) {
+            let nextInput = input;
+            let nextInit = init;
+            if (isUiApiRequest) {
+              if (typeof input === "string" || input instanceof URL) {
+                nextInit = { ...(init || {}), headers: withUiRequestHeader(init?.headers) };
+              } else {
+                nextInput = new Request(input, { ...(init || {}), headers: withUiRequestHeader(init?.headers || input.headers) });
+                nextInit = undefined;
+              }
+            }
+
+            const response = await originalFetch(nextInput, nextInit);
+            if ((isUiApiRequest && response.status === 401) || (response.redirected && isLoginUrl(response.url))) {
               redirectToLogin();
             }
 
@@ -248,7 +272,7 @@ internal static class JsonValidationClientScript
             this.__cclUrl = url;
 
              this.addEventListener("load", function() {
-              if (isLoginUrl(this.responseURL)) {
+              if ((isConsulApiUrl(this.__cclUrl) && this.status === 401) || isLoginUrl(this.responseURL)) {
                 redirectToLogin();
               }
             });
@@ -260,6 +284,10 @@ internal static class JsonValidationClientScript
             if (typeof body === "string" && shouldCheck(this.__cclMethod, this.__cclUrl) && !confirmInvalidJson(body)) {
               this.abort();
               return;
+            }
+
+            if (isConsulApiUrl(this.__cclUrl)) {
+              this.setRequestHeader(uiRequestHeaderName, uiRequestHeaderValue);
             }
 
             return send.apply(this, arguments);

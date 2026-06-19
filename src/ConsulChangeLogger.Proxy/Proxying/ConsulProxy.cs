@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using System.Text;
 using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.ChangeLogging;
+using ConsulChangeLogger.Proxy.Configuration;
 using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 
@@ -26,17 +27,20 @@ internal sealed class ConsulProxy
 
     private readonly HttpContext context;
     private readonly IHttpClientFactory httpClientFactory;
+    private readonly BootstrapOptions bootstrapOptions;
     private readonly ReadCache readCache;
     private readonly ChangeRecordSink changeRecordSink;
 
     public ConsulProxy(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
+        BootstrapOptions bootstrapOptions,
         ReadCache readCache,
         ChangeRecordSink changeRecordSink)
     {
         this.context = context;
         this.httpClientFactory = httpClientFactory;
+        this.bootstrapOptions = bootstrapOptions;
         this.readCache = readCache;
         this.changeRecordSink = changeRecordSink;
     }
@@ -47,6 +51,19 @@ internal sealed class ConsulProxy
         {
             if (context.User.Identity?.IsAuthenticated != true && RequestPathPolicy.IsConsulApiPath(context.Request.Path))
             {
+                if (bootstrapOptions.Authentication!.Value && RequestPathPolicy.IsMarkedUiRequest(context.Request.Headers))
+                {
+                    Log.Debug(
+                        "Unauthenticated marked UI API request for {Method} {Path}{Query}; returning 401",
+                        context.Request.Method,
+                        context.Request.Path,
+                        context.Request.QueryString);
+
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    await context.Response.WriteAsync("Authentication required.", context.RequestAborted);
+                    return;
+                }
+
                 await ForwardUnauthenticatedApiRequestAsync();
                 return;
             }

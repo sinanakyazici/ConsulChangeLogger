@@ -125,6 +125,7 @@ app.Map("/{**path}", async context =>
     var proxy = new ConsulProxy(
         context,
         app.Services.GetRequiredService<IHttpClientFactory>(),
+        bootstrapOptions,
         app.Services.GetRequiredService<ReadCache>(),
         app.Services.GetRequiredService<ChangeRecordSink>());
 

@@ -16,8 +16,9 @@ Applications  -> existing Consul hostname -> Consul Change Logger -> existing Co
 Path behavior:
 
 - `/` and `/ui/*` require an authenticated browser session.
-- authenticated browser `/v1/kv/*` traffic can be audited.
-- unauthenticated `/v1/*` traffic uses fast pass-through and is not audited.
+- the injected Consul UI client script marks browser-originated `/v1/*` requests with `X-Consul-Change-Logger-UI: true`.
+- marked authenticated browser `/v1/kv/*` traffic can be audited.
+- unmarked unauthenticated `/v1/*` traffic uses fast pass-through and is not audited.
 
 This keeps existing application Consul API calls working while adding login and change logging for browser-based Consul UI usage.
 
@@ -112,7 +113,7 @@ The upstream Consul service remains unchanged. Consul Change Logger forwards tra
 CONSUL_UPSTREAM_URL
 ```
 
-Do not change application configuration if applications already call the same hostname. Cookies-less `/v1/*` calls are fast pass-through and are not audited.
+Do not change application configuration if applications already call the same hostname. Cookies-less unmarked `/v1/*` calls are fast pass-through and are not audited.
 
 ## 6. Verify Health
 
@@ -170,6 +171,17 @@ Expected:
 - no outbox file
 
 This verifies the low-cost pass-through path used by non-browser Consul clients.
+
+To verify that browser-marked API traffic still requires a UI session, call:
+
+```powershell
+curl -i -H "X-Consul-Change-Logger-UI: true" http://localhost:8080/v1/status/leader
+```
+
+Expected:
+
+- `401 Unauthorized` when `AUTHENTICATION=true` and no login session exists
+- no request is treated as application pass-through
 
 ## 8. Verify Login
 
@@ -278,7 +290,7 @@ To test retry behavior in a non-production environment:
 
 - Existing Consul hostname routes through Consul Change Logger.
 - Existing Consul Service remains unchanged.
-- Application `/v1/*` traffic is pass-through and not audited.
+- Application `/v1/*` traffic without the UI marker header is pass-through and not audited.
 - Browser `/ui/*` traffic requires login.
 - Consul ACLs protect the runtime configuration key.
 - Elasticsearch TLS/auth works.
