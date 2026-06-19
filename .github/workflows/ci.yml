@@ -41,4 +41,4 @@ jobs:
         run: helm template consul-change-logger chart/consul-change-logger
 
       - name: Docker build
-        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile -t consul-change-logger:ci .
+        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=ci-${{ github.sha }} -t consul-change-logger:ci .

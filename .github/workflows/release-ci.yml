@@ -49,7 +49,7 @@ jobs:
         run: helm template consul-change-logger chart/consul-change-logger
 
       - name: Docker build
-        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile -t consul-change-logger:ci .
+        run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=${{ steps.version.outputs.tag }} -t consul-change-logger:ci .
 
       - name: Prepare release bundle
         shell: bash

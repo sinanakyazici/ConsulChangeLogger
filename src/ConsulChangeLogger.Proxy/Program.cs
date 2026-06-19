@@ -71,7 +71,8 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UserSessionMiddleware>();
 
 Log.Information(
-    "Consul Change Logger starting. Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled}",
+    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled}",
+    ApplicationVersion.Current,
     bootstrapOptions.ConsulUpstreamUrl,
     runtimeConfig.Elasticsearch.Url,
     runtimeConfig.LdapConfiguration.Domain,

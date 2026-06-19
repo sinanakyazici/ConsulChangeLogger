@@ -291,6 +291,7 @@ Console logging is intentionally verbose in the current build so the whole reque
 
 The proxy logs:
 
+- application version at startup
 - login page requests
 - login attempts
 - LDAP bind success and failure
