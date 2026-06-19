@@ -22,7 +22,7 @@ The diagram follows one continuous flow:
 2. `Consul Change Logger` serves the login page
 3. LDAP / AD validates the submitted credentials with direct bind
 4. a successful login creates an in-memory session and redirects the browser to `/ui/`
-5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`
+5. Consul UI sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`
 6. `Consul Change Logger` forwards those calls to the existing Consul UI and Consul KV API
 7. Consul responses return through the proxy to the browser
 8. audit capture builds `ChangeRecord` documents and persists them to outbox first
@@ -116,9 +116,9 @@ sequenceDiagram
     participant CCL as Consul Change Logger
     participant LDAP as LDAP / AD
     participant Session as In-memory Session
-    participant UI as Consul UI JS
+    participant UI as Consul UI
     participant Cache as Read Cache
-    participant Consul as Existing Consul KV API
+    participant Consul as Consul Backend
     participant Outbox as Outbox
     participant Worker as Dispatch Worker
     participant ES as Elasticsearch

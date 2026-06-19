@@ -178,7 +178,7 @@ Flow summary:
 2. `Consul Change Logger` serves `/login`.
 3. LDAP / AD validates the submitted username and password with direct bind.
 4. A successful login creates an in-memory session and redirects the browser to `/ui/`.
-5. Consul UI JavaScript sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`.
+5. Consul UI sends `/ui/*` and `/v1/kv/...` traffic through `Consul Change Logger`.
 6. `Consul Change Logger` forwards those requests to the existing Consul UI and Consul KV API.
 7. Consul responses return through the proxy back to the browser.
 8. While forwarding KV traffic, the proxy creates audit records and writes them to outbox.
