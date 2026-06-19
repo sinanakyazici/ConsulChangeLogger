@@ -360,6 +360,11 @@ Example runtime configuration:
     "Port": 1389,
     "SecurePort": 1636,
     "UseSSL": false
+  },
+  "LogLevel": {
+    "Default": "Debug",
+    "Microsoft": "Warning",
+    "System": "Warning"
   }
 }
 ```
@@ -367,6 +372,7 @@ Example runtime configuration:
 Notes:
 
 - The Helm chart mounts the outbox PVC at `/var/lib/consul-change-logger/outbox` by default.
+- `LogLevel` is optional. If it is not provided, the application uses `Debug` for its own logs and `Warning` for `Microsoft` and `System`.
 - At startup the proxy waits for Consul first, then waits for LDAP when `AUTHENTICATION=true`, then waits for Elasticsearch.
 - In the current implementation, startup is blocked until Elasticsearch becomes reachable and the target index mapping is ensured.
 - When `LdapConfiguration.UseSSL=true`, the current implementation accepts the server certificate via a permissive validation callback. Traffic is encrypted, but strict certificate trust validation is not yet enforced.

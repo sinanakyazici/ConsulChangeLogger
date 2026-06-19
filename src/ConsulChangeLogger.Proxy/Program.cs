@@ -19,13 +19,14 @@ Log.Logger = new LoggerConfiguration()
 var builder = WebApplication.CreateBuilder(args);
 var bootstrapOptions = BootstrapOptions.FromConfiguration(builder.Configuration);
 var runtimeConfig = await ConsulConfigLoader.LoadAsync(bootstrapOptions, CancellationToken.None);
+var logLevelOptions = LogLevelOptions.From(runtimeConfig.LogLevel);
 
 builder.Host.UseSerilog((_, loggerConfiguration) =>
 {
     loggerConfiguration
-        .MinimumLevel.Debug()
-        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-        .MinimumLevel.Override("System", LogEventLevel.Warning)
+        .MinimumLevel.Is(logLevelOptions.Default)
+        .MinimumLevel.Override("Microsoft", logLevelOptions.Microsoft)
+        .MinimumLevel.Override("System", logLevelOptions.System)
         .Enrich.FromLogContext()
         .WriteTo.Console();
 });
@@ -71,14 +72,17 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UserSessionMiddleware>();
 
 Log.Information(
-    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled}",
+    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled} LogLevel={LogLevel} MicrosoftLogLevel={MicrosoftLogLevel} SystemLogLevel={SystemLogLevel}",
     ApplicationVersion.Current,
     bootstrapOptions.ConsulUpstreamUrl,
     runtimeConfig.Elasticsearch.Url,
     runtimeConfig.LdapConfiguration.Domain,
     runtimeConfig.LdapConfiguration.UseSSL!.Value ? runtimeConfig.LdapConfiguration.SecurePort!.Value : runtimeConfig.LdapConfiguration.Port!.Value,
     runtimeConfig.LdapConfiguration.UseSSL,
-    bootstrapOptions.Authentication!.Value);
+    bootstrapOptions.Authentication!.Value,
+    logLevelOptions.Default,
+    logLevelOptions.Microsoft,
+    logLevelOptions.System);
 
 using (var scope = app.Services.CreateScope())
 {

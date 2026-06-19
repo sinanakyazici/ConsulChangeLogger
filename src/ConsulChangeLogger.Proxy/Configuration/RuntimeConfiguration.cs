@@ -5,6 +5,7 @@ internal sealed record RuntimeConfiguration
     public ElasticsearchConfiguration Elasticsearch { get; init; } = new();
     public ChangeLogConfiguration ChangeLog { get; init; } = new();
     public LdapConfiguration LdapConfiguration { get; init; } = new();
+    public LogLevelConfiguration LogLevel { get; init; } = new();
 }
 
 internal sealed record ElasticsearchConfiguration
@@ -29,4 +30,11 @@ internal sealed record LdapConfiguration
     public int? Port { get; init; }
     public int? SecurePort { get; init; }
     public bool? UseSSL { get; init; }
+}
+
+internal sealed record LogLevelConfiguration
+{
+    public string? Default { get; init; }
+    public string? Microsoft { get; init; }
+    public string? System { get; init; }
 }
