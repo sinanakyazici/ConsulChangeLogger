@@ -5,6 +5,7 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4.svg)](https://dotnet.microsoft.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](src/ConsulChangeLogger.Proxy/Dockerfile)
 [![Docker Hub](https://img.shields.io/badge/Docker%20Hub-sinanakyazici%2Fconsul--change--logger-2496ED.svg)](https://hub.docker.com/r/sinanakyazici/consul-change-logger)
+[![Docker Scout](https://img.shields.io/badge/Docker%20Scout-0C%200H%200M%200L-brightgreen.svg)](https://hub.docker.com/r/sinanakyazici/consul-change-logger)
 
 Consul Change Logger is an ASP.NET Core reverse proxy that sits in front of Consul UI and the Consul HTTP API, authenticates browser users with LDAP, forwards allowed traffic to Consul, and records Consul KV write and delete activity into Elasticsearch.
 
@@ -58,6 +59,8 @@ Relevant workflows:
 - [CI-main](.github/workflows/ci.yml)
 - [CI-release](.github/workflows/release-ci.yml)
 - [Release-publish](.github/workflows/release.yml)
+
+Release images are gated by Docker Scout before they are bundled and published. The release build fails if Docker Scout reports any vulnerability in the container image.
 
 Docker Hub publishing requires these repository secrets:
 

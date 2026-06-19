@@ -51,6 +51,15 @@ jobs:
       - name: Docker build
         run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=${{ steps.version.outputs.tag }} -t consul-change-logger:ci .
 
+      - name: Docker Scout vulnerability gate
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: consul-change-logger:ci
+          exit-code: true
+          dockerhub-user: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Prepare release bundle
         shell: bash
         run: |
