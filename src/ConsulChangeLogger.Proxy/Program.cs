@@ -71,13 +71,17 @@ app.UseSerilogRequestLogging(options =>
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseMiddleware<UserSessionMiddleware>();
 
+var ldapPort = runtimeConfig.LdapConfiguration.UseSSL!.Value
+    ? runtimeConfig.LdapConfiguration.SecurePort!.Value
+    : runtimeConfig.LdapConfiguration.Port!.Value;
+
 Log.Information(
-    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} Ldap={LdapHost}:{LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled} LogLevel={LogLevel} MicrosoftLogLevel={MicrosoftLogLevel} SystemLogLevel={SystemLogLevel}",
+    "Consul Change Logger starting. Version={Version} Consul={ConsulUrl} Elasticsearch={ElasticsearchUrl} LdapHost={LdapHost} LdapPort={LdapPort} UseSSL={UseSSL} AuthenticationEnabled={AuthenticationEnabled} LogLevel={LogLevel} MicrosoftLogLevel={MicrosoftLogLevel} SystemLogLevel={SystemLogLevel}",
     ApplicationVersion.Current,
     bootstrapOptions.ConsulUpstreamUrl,
     runtimeConfig.Elasticsearch.Url,
     runtimeConfig.LdapConfiguration.Domain,
-    runtimeConfig.LdapConfiguration.UseSSL!.Value ? runtimeConfig.LdapConfiguration.SecurePort!.Value : runtimeConfig.LdapConfiguration.Port!.Value,
+    ldapPort,
     runtimeConfig.LdapConfiguration.UseSSL,
     bootstrapOptions.Authentication!.Value,
     logLevelOptions.Default,

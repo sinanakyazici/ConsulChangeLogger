@@ -8,15 +8,16 @@ on:
       - completed
 
 permissions:
-  contents: write
-  packages: write
   actions: read
+  contents: read
 
 jobs:
   detect-release:
     name: Detect tagged CI run
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       should_release: ${{ steps.detect.outputs.should_release }}
       tag: ${{ steps.detect.outputs.tag }}
@@ -27,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -54,24 +55,28 @@ jobs:
     name: Publish release artifacts
     needs:
       - detect-release
-    if: needs.detect-release.outputs.should_release == 'true'
+    if: github.event.workflow_run.event == 'push' && needs.detect-release.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      packages: write
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
     steps:
       - name: Checkout triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
 
       - name: Download CI release bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: release-bundle-${{ needs.detect-release.outputs.version }}
           path: dist
@@ -79,7 +84,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -94,7 +99,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
@@ -109,9 +114,11 @@ jobs:
           docker push "${{ needs.detect-release.outputs.dockerhub_image }}:latest"
 
       - name: Helm registry login
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+          echo "$GHCR_TOKEN" | helm registry login ghcr.io \
             --username "${{ github.actor }}" \
             --password-stdin
 
@@ -121,7 +128,7 @@ jobs:
           helm push "dist/consul-change-logger-${{ needs.detect-release.outputs.version }}.tgz" "${{ needs.detect-release.outputs.chart }}"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: ${{ needs.detect-release.outputs.tag }}
           name: ${{ needs.detect-release.outputs.tag }}

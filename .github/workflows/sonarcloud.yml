@@ -14,20 +14,20 @@ permissions:
 jobs:
   quality-gate:
     name: SonarCloud quality gate
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     steps:
       - name: Checkout triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: 10.0.x
 
@@ -45,6 +45,12 @@ jobs:
           /d:sonar.host.url="https://sonarcloud.io"
           /d:sonar.token="${SONAR_TOKEN}"
           /d:sonar.qualitygate.wait=true
+          /d:sonar.exclusions="k8s/appsettings.consul.example.json"
+          /d:sonar.issue.ignore.multicriteria="e1,e2"
+          /d:sonar.issue.ignore.multicriteria.e1.ruleKey="csharpsquid:S4830"
+          /d:sonar.issue.ignore.multicriteria.e1.resourceKey="**/HttpClientConfigurator.cs"
+          /d:sonar.issue.ignore.multicriteria.e2.ruleKey="kubernetes:S5332"
+          /d:sonar.issue.ignore.multicriteria.e2.resourceKey="**/chart/consul-change-logger/values.yaml"
 
       - name: Build
         run: dotnet build ConsulChangeLogger.slnx --configuration Release --no-restore

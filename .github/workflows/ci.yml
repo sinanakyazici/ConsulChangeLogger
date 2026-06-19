@@ -19,18 +19,18 @@ jobs:
 
     steps:
       - name: Checkout triggering commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
           dotnet-version: 10.0.x
 
       - name: Setup Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
 
       - name: Detect semantic version tag
         id: release
@@ -69,7 +69,7 @@ jobs:
         run: docker build -f src/ConsulChangeLogger.Proxy/Dockerfile --build-arg APP_VERSION=${{ steps.release.outputs.version_label }} -t consul-change-logger:ci .
 
       - name: Docker Scout vulnerability gate
-        uses: docker/scout-action@v1
+        uses: docker/scout-action@bacf462e8d090c09660de30a6ccc718035f961e3
         with:
           command: cves
           image: consul-change-logger:ci
@@ -95,7 +95,7 @@ jobs:
 
       - name: Upload release bundle
         if: steps.release.outputs.is_release == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-bundle-${{ steps.release.outputs.version }}
           path: dist/*
