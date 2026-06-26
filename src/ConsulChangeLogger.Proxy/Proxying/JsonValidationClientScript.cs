@@ -122,6 +122,34 @@ internal static class JsonValidationClientScript
             return updated;
           }
 
+          function readEditorApiValue(root) {
+            const editors = [
+              root,
+              ...Array.from(root.querySelectorAll?.(".CodeMirror") || [])
+            ];
+
+            for (const editor of editors) {
+              const codeMirror = editor?.CodeMirror;
+              if (codeMirror && typeof codeMirror.getValue === "function") {
+                const value = codeMirror.getValue();
+                if (typeof value === "string" && value.trim().length > 0) {
+                  return value;
+                }
+              }
+            }
+
+            return "";
+          }
+
+          function readCodeMirrorLineValue(root) {
+            const lineNodes = Array.from(root.querySelectorAll?.("pre.CodeMirror-line, pre.CodeMirror-line-like") || []);
+            if (lineNodes.length === 0) {
+              return "";
+            }
+
+            return lineNodes.map(line => line.textContent || "").join("\n");
+          }
+
           function readCandidateValue(node) {
             if (!node) {
               return "";
@@ -136,10 +164,54 @@ internal static class JsonValidationClientScript
             }
 
             if (node.isContentEditable) {
-              return node.innerText || node.textContent || "";
+              return stripEditorLineNumbers(node.innerText || node.textContent || "");
             }
 
-            return node.textContent || "";
+            return stripEditorLineNumbers(node.textContent || "");
+          }
+
+          function stripEditorLineNumbers(value) {
+            if (typeof value !== "string" || value.trim().length === 0) {
+              return value || "";
+            }
+
+            const lines = value.replace(/\u00a0/g, " ").split(/\r?\n/);
+            let expected = 1;
+            let removedStandalone = 0;
+            const withoutStandalone = [];
+
+            for (const line of lines) {
+              if (line.trim() === String(expected)) {
+                expected += 1;
+                removedStandalone += 1;
+                continue;
+              }
+
+              withoutStandalone.push(line);
+            }
+
+            if (removedStandalone >= 2 && withoutStandalone.join("\n").trim().length > 0) {
+              return withoutStandalone.join("\n");
+            }
+
+            expected = 1;
+            let removedPrefixed = 0;
+            const withoutPrefixes = lines.map(line => {
+              const match = line.match(/^\s*(\d+)\s+(.*)$/);
+              if (!match || Number(match[1]) !== expected) {
+                return line;
+              }
+
+              expected += 1;
+              removedPrefixed += 1;
+              return match[2];
+            });
+
+            if (removedPrefixed >= 2 && withoutPrefixes.join("\n").trim().length > 0) {
+              return withoutPrefixes.join("\n");
+            }
+
+            return value;
           }
 
           function findEditorValue(startNode) {
@@ -155,12 +227,20 @@ internal static class JsonValidationClientScript
               "input[type='text']",
               "input:not([type])",
               "[contenteditable='true']",
-              ".cm-content",
-              ".CodeMirror textarea",
-              ".CodeMirror-code"
+              ".cm-content"
             ];
 
             for (const root of roots) {
+              const editorApiValue = readEditorApiValue(root);
+              if (editorApiValue.trim().length > 0) {
+                return editorApiValue;
+              }
+
+              const codeMirrorLineValue = readCodeMirrorLineValue(root);
+              if (codeMirrorLineValue.trim().length > 0) {
+                return codeMirrorLineValue;
+              }
+
               const values = selectors
                 .flatMap(selector => Array.from(root.querySelectorAll(selector)))
                 .map(readCandidateValue)
