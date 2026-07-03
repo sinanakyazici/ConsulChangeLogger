@@ -11,14 +11,14 @@ It created the Consul Change Logger Deployment, Service, and optional outbox PVC
 
    {{ .Values.bootstrap.consulConfigKey }}
 
-3. Route only the browser-facing Consul UI endpoint to this Service:
+3. Route the authenticated Consul UI endpoint to this Service:
 
    Service: {{ include "consul-change-logger.fullname" . }}
    Port:    {{ .Values.service.port }}
 
-   Existing application traffic can keep using the same /v1/* endpoint if this
-   gateway is placed in front of the shared Consul hostname. Unauthenticated
-   /v1/* requests are fast pass-through and are not audited.
+   When AUTHENTICATION=true, every Consul UI and API request through this
+   gateway requires a valid session. Route machine-to-machine Consul traffic
+   directly to the existing Consul Service.
 
 4. Verify health:
 

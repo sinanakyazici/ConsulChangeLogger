@@ -3,8 +3,6 @@ using System.Net.Sockets;
 using System.Text;
 using ConsulChangeLogger.Proxy;
 using ConsulChangeLogger.Proxy.ChangeLogging;
-using ConsulChangeLogger.Proxy.Configuration;
-using ConsulChangeLogger.Proxy.Security;
 using Serilog;
 
 namespace ConsulChangeLogger.Proxy.Proxying;
@@ -41,20 +39,17 @@ internal sealed class ConsulProxy
 
     private readonly HttpContext context;
     private readonly IHttpClientFactory httpClientFactory;
-    private readonly BootstrapOptions bootstrapOptions;
     private readonly ReadCache readCache;
     private readonly ChangeRecordSink changeRecordSink;
 
     public ConsulProxy(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
-        BootstrapOptions bootstrapOptions,
         ReadCache readCache,
         ChangeRecordSink changeRecordSink)
     {
         this.context = context;
         this.httpClientFactory = httpClientFactory;
-        this.bootstrapOptions = bootstrapOptions;
         this.readCache = readCache;
         this.changeRecordSink = changeRecordSink;
     }
@@ -63,25 +58,6 @@ internal sealed class ConsulProxy
     {
         try
         {
-            if (context.User.Identity?.IsAuthenticated != true && RequestPathPolicy.IsConsulApiPath(context.Request.Path))
-            {
-                if (bootstrapOptions.Authentication!.Value && RequestPathPolicy.IsMarkedUiRequest(context.Request.Headers))
-                {
-                    Log.Debug(
-                        "Unauthenticated marked UI API request for {Method} {Path}{Query}; returning 401",
-                        context.Request.Method,
-                        context.Request.Path,
-                        context.Request.QueryString);
-
-                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                    await context.Response.WriteAsync("Authentication required.", context.RequestAborted);
-                    return;
-                }
-
-                await ForwardUnauthenticatedApiRequestAsync();
-                return;
-            }
-
             Log.Debug(
                 "Proxying {Method} {Path}{Query} for {Username}",
                 context.Request.Method,
@@ -163,18 +139,6 @@ internal sealed class ConsulProxy
         }
     }
 
-    private async Task ForwardUnauthenticatedApiRequestAsync()
-    {
-        using var upstreamRequest = BuildStreamingUpstreamRequest();
-        using var upstreamResponse = await httpClientFactory
-            .CreateClient("consul")
-            .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
-
-        context.Response.StatusCode = (int)upstreamResponse.StatusCode;
-        CopyResponseHeaders(upstreamResponse, includeContentLength: true);
-        await upstreamResponse.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
-    }
-
     private async Task<byte[]> ReadRequestBodyAsync()
     {
         if (context.Request.ContentLength is null or 0)
@@ -197,21 +161,6 @@ internal sealed class ConsulProxy
         if (requestBodyBytes.Length > 0)
         {
             request.Content = new ByteArrayContent(requestBodyBytes);
-            CopyRequestContentHeaders(request.Content);
-        }
-
-        return request;
-    }
-
-    private HttpRequestMessage BuildStreamingUpstreamRequest()
-    {
-        var target = context.Request.PathBase + context.Request.Path + context.Request.QueryString;
-        var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
-        CopyRequestHeaders(request);
-
-        if (RequestCanHaveBody(context.Request.Method) && context.Request.ContentLength != 0)
-        {
-            request.Content = new StreamContent(context.Request.Body);
             CopyRequestContentHeaders(request.Content);
         }
 
@@ -556,9 +505,4 @@ internal sealed class ConsulProxy
         exception.InnerException is SocketException socketException &&
         socketException.ErrorCode is 995 or 10053 or 10054;
 
-    private static bool RequestCanHaveBody(string method) =>
-        HttpMethods.IsPost(method) ||
-        HttpMethods.IsPut(method) ||
-        HttpMethods.IsPatch(method) ||
-        HttpMethods.IsDelete(method);
 }

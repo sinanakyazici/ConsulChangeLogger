@@ -11,8 +11,6 @@ internal static class JsonValidationClientScript
             "Girilen deger JSON gibi gorunuyor ancak gecerli degil.\n\nYine de kaydetmek istiyor musunuz?";
           let redirectingToLogin = false;
           let allowNextKvPutUntil = 0;
-          const uiRequestHeaderName = "X-Consul-Change-Logger-UI";
-          const uiRequestHeaderValue = "true";
 
           function isLoginUrl(url) {
             try {
@@ -114,12 +112,6 @@ internal static class JsonValidationClientScript
             } catch {
               return false;
             }
-          }
-
-          function withUiRequestHeader(headers) {
-            const updated = new Headers(headers || {});
-            updated.set(uiRequestHeaderName, uiRequestHeaderValue);
-            return updated;
           }
 
           function readEditorApiValue(root) {
@@ -325,18 +317,7 @@ internal static class JsonValidationClientScript
               throw new DOMException("JSON validation cancelled by user.", "AbortError");
             }
 
-            let nextInput = input;
-            let nextInit = init;
-            if (isUiApiRequest) {
-              if (typeof input === "string" || input instanceof URL) {
-                nextInit = { ...(init || {}), headers: withUiRequestHeader(init?.headers) };
-              } else {
-                nextInput = new Request(input, { ...(init || {}), headers: withUiRequestHeader(init?.headers || input.headers) });
-                nextInit = undefined;
-              }
-            }
-
-            const response = await originalFetch(nextInput, nextInit);
+            const response = await originalFetch(input, init);
             if ((isUiApiRequest && response.status === 401) || (response.redirected && isLoginUrl(response.url))) {
               redirectToLogin();
             }
@@ -364,10 +345,6 @@ internal static class JsonValidationClientScript
             if (typeof body === "string" && shouldCheck(this.__cclMethod, this.__cclUrl) && !confirmInvalidJson(body)) {
               this.abort();
               return;
-            }
-
-            if (isConsulApiUrl(this.__cclUrl)) {
-              this.setRequestHeader(uiRequestHeaderName, uiRequestHeaderValue);
             }
 
             return send.apply(this, arguments);

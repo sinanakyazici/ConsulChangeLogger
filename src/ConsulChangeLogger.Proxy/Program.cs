@@ -116,9 +116,7 @@ app.Map("/{**path}", async (HttpContext context, string? path) =>
 {
     _ = path;
     var isAuthenticated = context.User.Identity?.IsAuthenticated == true;
-    if (bootstrapOptions.Authentication!.Value &&
-        !isAuthenticated &&
-        RequestPathPolicy.RequiresAuthenticatedUiSession(context.Request.Path))
+    if (ProxyAuthenticationPolicy.RequiresSession(bootstrapOptions.Authentication!.Value, context.User))
     {
         Log.Debug("Unauthenticated request for {Path}; redirecting to /login", context.Request.Path);
         context.Response.Redirect("/login");
@@ -135,7 +133,6 @@ app.Map("/{**path}", async (HttpContext context, string? path) =>
     var proxy = new ConsulProxy(
         context,
         app.Services.GetRequiredService<IHttpClientFactory>(),
-        bootstrapOptions,
         app.Services.GetRequiredService<ReadCache>(),
         app.Services.GetRequiredService<ChangeRecordSink>());
 

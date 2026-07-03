@@ -15,12 +15,12 @@ Applications  -> existing Consul hostname -> Consul Change Logger -> existing Co
 
 Path behavior:
 
-- `/` and `/ui/*` require an authenticated browser session.
-- the injected Consul UI client script marks browser-originated `/v1/*` requests with `X-Consul-Change-Logger-UI: true`.
-- marked authenticated browser `/v1/kv/*` traffic can be audited.
-- unmarked unauthenticated `/v1/*` traffic uses fast pass-through and is not audited.
+- every Consul UI and API request through the gateway requires an authenticated session when `AUTHENTICATION=true`.
+- requests without a valid session are redirected to `/login`.
+- authenticated `/v1/kv/*` traffic can be audited because the session supplies the user identity.
+- machine-to-machine Consul traffic must use the existing Consul Service directly when authentication is enabled.
 
-This keeps existing application Consul API calls working while adding login and change logging for browser-based Consul UI usage.
+This creates one consistent authentication boundary for all Consul traffic routed through the gateway.
 
 ## 2. Collect Existing System Information
 
@@ -113,7 +113,7 @@ The upstream Consul service remains unchanged. Consul Change Logger forwards tra
 CONSUL_UPSTREAM_URL
 ```
 
-Do not change application configuration if applications already call the same hostname. Cookies-less unmarked `/v1/*` calls are fast pass-through and are not audited.
+When `AUTHENTICATION=true`, do not route backend applications through this gateway unless they can supply a valid gateway session. Keep machine-to-machine clients on the existing internal Consul Service.
 
 ## 6. Verify Health
 
@@ -155,9 +155,9 @@ If readiness fails, check:
 - LDAP URL/port when authentication is enabled
 - Consul KV runtime configuration
 
-## 7. Verify Application Pass-Through
+## 7. Verify Session Enforcement
 
-Send an application-style request without browser cookies:
+Send a request without browser cookies:
 
 ```powershell
 curl http://localhost:8080/v1/status/leader
@@ -165,23 +165,21 @@ curl http://localhost:8080/v1/status/leader
 
 Expected:
 
-- request reaches Consul
-- no login redirect
-- no audit document
-- no outbox file
+- `302` redirect to `/login` when `AUTHENTICATION=true`
+- request does not reach Consul
+- no audit document or outbox file is created
 
-This verifies the low-cost pass-through path used by non-browser Consul clients.
+When `AUTHENTICATION=false`, the same request is forwarded directly to Consul without session enforcement or audit capture.
 
-To verify that browser-marked API traffic still requires a UI session, call:
+Inspect the redirect explicitly with:
 
 ```powershell
-curl -i -H "X-Consul-Change-Logger-UI: true" http://localhost:8080/v1/status/leader
+curl -i http://localhost:8080/v1/status/leader
 ```
 
 Expected:
 
-- `401 Unauthorized` when `AUTHENTICATION=true` and no login session exists
-- no request is treated as application pass-through
+- `Location: /login` when `AUTHENTICATION=true` and no session exists
 
 ## 8. Verify Login
 
@@ -290,8 +288,8 @@ To test retry behavior in a non-production environment:
 
 - Existing Consul hostname routes through Consul Change Logger.
 - Existing Consul Service remains unchanged.
-- Application `/v1/*` traffic without the UI marker header is pass-through and not audited.
-- Browser `/ui/*` traffic requires login.
+- Every Consul UI and API request through the gateway requires a session when authentication is enabled.
+- Machine-to-machine Consul traffic uses the existing internal Consul Service directly.
 - Consul ACLs protect the runtime configuration key.
 - Elasticsearch TLS/auth works.
 - LDAP direct bind works.
