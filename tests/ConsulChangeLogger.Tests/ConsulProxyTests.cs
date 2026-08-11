@@ -33,7 +33,7 @@ public sealed class ConsulProxyTests
         var payload = Encoding.UTF8.GetBytes("""[{ "Value": "eyAiYSIgOiAxIH0=" }]""");
         var compressed = Compress(payload, stream => new GZipStream(stream, CompressionMode.Compress));
 
-        var result = ConsulProxy.DecodeResponseBodyForAudit(compressed, ["gzip"]);
+        var result = ResponseBodyDecoder.DecodeForAudit(compressed, ["gzip"]);
 
         Assert.Equal(payload, result);
     }
@@ -44,7 +44,7 @@ public sealed class ConsulProxyTests
         var payload = Encoding.UTF8.GetBytes("""[{ "Value": "eyAiYSIgOiAxIH0=" }]""");
         var compressed = Compress(payload, stream => new DeflateStream(stream, CompressionMode.Compress));
 
-        var result = ConsulProxy.DecodeResponseBodyForAudit(compressed, ["deflate"]);
+        var result = ResponseBodyDecoder.DecodeForAudit(compressed, ["deflate"]);
 
         Assert.Equal(payload, result);
     }
@@ -55,7 +55,7 @@ public sealed class ConsulProxyTests
         var payload = Encoding.UTF8.GetBytes("""[{ "Value": "eyAiYSIgOiAxIH0=" }]""");
         var compressed = Compress(payload, stream => new BrotliStream(stream, CompressionMode.Compress));
 
-        var result = ConsulProxy.DecodeResponseBodyForAudit(compressed, ["br"]);
+        var result = ResponseBodyDecoder.DecodeForAudit(compressed, ["br"]);
 
         Assert.Equal(payload, result);
     }
@@ -65,7 +65,17 @@ public sealed class ConsulProxyTests
     {
         var payload = Encoding.UTF8.GetBytes("""[{ "Value": "eyAiYSIgOiAxIH0=" }]""");
 
-        var result = ConsulProxy.DecodeResponseBodyForAudit(payload, ["zstd"]);
+        var result = ResponseBodyDecoder.DecodeForAudit(payload, ["zstd"]);
+
+        Assert.Equal(payload, result);
+    }
+
+    [Fact]
+    public void DecodeResponseBodyForAudit_LeavesMalformedCompressedPayloadUnchanged()
+    {
+        var payload = Encoding.UTF8.GetBytes("""[{ "Value": "eyAiYSIgOiAxIH0=" }]""");
+
+        var result = ResponseBodyDecoder.DecodeForAudit(payload, ["gzip"]);
 
         Assert.Equal(payload, result);
     }

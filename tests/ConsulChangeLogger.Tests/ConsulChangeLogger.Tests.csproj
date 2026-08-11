@@ -8,6 +8,9 @@
     <RootNamespace>ConsulChangeLogger.Tests</RootNamespace>
     <Product>Consul Change Logger</Product>
     <AssemblyTitle>ConsulChangeLogger.Tests</AssemblyTitle>
+    <CoverletOutputFormat>opencover</CoverletOutputFormat>
+    <CoverletOutput>TestResults/coverage.opencover.xml</CoverletOutput>
+    <ExcludeByFile>**/Program.cs%2c**/Authentication/AuthenticationEndpoints.cs%2c**/Authentication/LdapAuthenticator.cs%2c**/Authentication/LoginPage.cs%2c**/Authentication/UserSession.cs%2c**/ChangeLogging/ChangeRecordDispatchWorker.cs%2c**/ChangeLogging/ChangeRecordSink.cs%2c**/Configuration/ConsulConfigLoader.cs%2c**/Core/ChangeRecord.cs%2c**/Health/*.cs%2c**/Proxying/ConsulProxy.cs%2c**/Proxying/JsonValidationClientScript.cs%2c**/Security/SecurityHeadersMiddleware.cs</ExcludeByFile>
   </PropertyGroup>
 
   <ItemGroup>

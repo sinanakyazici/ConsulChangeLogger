@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.IO.Compression;
 using System.Net.Sockets;
 using System.Text;
 using ConsulChangeLogger.Proxy;
@@ -75,7 +74,7 @@ internal sealed class ConsulProxy
                 .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
 
             var responseBodyBytes = await upstreamResponse.Content.ReadAsByteArrayAsync(context.RequestAborted);
-            var auditResponseBodyBytes = DecodeResponseBodyForAudit(responseBodyBytes, upstreamResponse.Content.Headers.ContentEncoding);
+            var auditResponseBodyBytes = ResponseBodyDecoder.DecodeForAudit(responseBodyBytes, upstreamResponse.Content.Headers.ContentEncoding);
             Log.Debug(
                 "Upstream response {StatusCode} for {Method} {Path} requestBytes={RequestBytes} responseBytes={ResponseBytes}",
                 (int)upstreamResponse.StatusCode,
@@ -289,7 +288,7 @@ internal sealed class ConsulProxy
             }
 
             var responseBodyBytes = await prefetchResponse.Content.ReadAsByteArrayAsync(context.RequestAborted);
-            var auditResponseBodyBytes = DecodeResponseBodyForAudit(responseBodyBytes, prefetchResponse.Content.Headers.ContentEncoding);
+            var auditResponseBodyBytes = ResponseBodyDecoder.DecodeForAudit(responseBodyBytes, prefetchResponse.Content.Headers.ContentEncoding);
             var responseBody = Encoding.UTF8.GetString(auditResponseBodyBytes);
             var oldValue = ConsulKvChangeHelpers.ExtractReadValue(prefetchPath, responseBody);
             var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
@@ -516,42 +515,4 @@ internal sealed class ConsulProxy
         headerName.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
         headerName.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase);
 
-    internal static byte[] DecodeResponseBodyForAudit(byte[] responseBodyBytes, IEnumerable<string> contentEncodings)
-    {
-        var decodedBytes = responseBodyBytes;
-        foreach (var encoding in contentEncodings.SelectMany(SplitContentEncoding).Reverse())
-        {
-            decodedBytes = DecodeSingleEncoding(decodedBytes, encoding);
-        }
-
-        return decodedBytes;
-    }
-
-    private static IEnumerable<string> SplitContentEncoding(string value) =>
-        value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    private static byte[] DecodeSingleEncoding(byte[] responseBodyBytes, string contentEncoding)
-    {
-        if (contentEncoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
-        {
-            return responseBodyBytes;
-        }
-
-        using var input = new MemoryStream(responseBodyBytes);
-        using var output = new MemoryStream();
-        Stream decoder = contentEncoding.ToLowerInvariant() switch
-        {
-            "gzip" => new GZipStream(input, CompressionMode.Decompress),
-            "br" => new BrotliStream(input, CompressionMode.Decompress),
-            "deflate" => new DeflateStream(input, CompressionMode.Decompress),
-            _ => input
-        };
-
-        using (decoder)
-        {
-            decoder.CopyTo(output);
-        }
-
-        return ReferenceEquals(decoder, input) ? responseBodyBytes : output.ToArray();
-    }
 }

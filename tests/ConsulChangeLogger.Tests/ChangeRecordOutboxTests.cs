@@ -34,6 +34,14 @@ public sealed class ChangeRecordOutboxTests : IDisposable
     }
 
     [Fact]
+    public void EnumeratePendingFiles_ReturnsEmpty_WhenRootDoesNotExist()
+    {
+        var files = ChangeRecordOutbox.EnumeratePendingFiles(rootPath).ToArray();
+
+        Assert.Empty(files);
+    }
+
+    [Fact]
     public void DeleteExpiredDailyDirectories_RemovesOnlyDirectoriesOutsideRetentionWindow()
     {
         Directory.CreateDirectory(Path.Combine(rootPath, "2026-06-10"));
@@ -45,6 +53,14 @@ public sealed class ChangeRecordOutboxTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(rootPath, "2026-06-10")));
         Assert.True(Directory.Exists(Path.Combine(rootPath, "2026-06-15")));
         Assert.True(Directory.Exists(Path.Combine(rootPath, "misc")));
+    }
+
+    [Fact]
+    public void DeleteExpiredDailyDirectories_DoesNothing_WhenRootDoesNotExist()
+    {
+        ChangeRecordOutbox.DeleteExpiredDailyDirectories(rootPath, retentionDays: 30, DateTimeOffset.UtcNow);
+
+        Assert.False(Directory.Exists(rootPath));
     }
 
     public void Dispose()

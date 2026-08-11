@@ -48,7 +48,7 @@ jobs:
           /d:sonar.token="${SONAR_TOKEN}"
           /d:sonar.qualitygate.wait=true
           /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
-          /d:sonar.coverage.exclusions="**/Program.cs,**/Authentication/AuthenticationEndpoints.cs,**/Authentication/LdapAuthenticator.cs,**/Authentication/LoginCsrfTokenStore.cs,**/Authentication/LoginPage.cs,**/Authentication/UserSession.cs,**/Authentication/UserSessionStore.cs,**/ChangeLogging/ChangeRecordDispatchWorker.cs,**/ChangeLogging/ChangeRecordOutbox.cs,**/ChangeLogging/ChangeRecordSink.cs,**/Core/ChangeRecord.cs,**/Core/ConsulKvChangeHelpers.cs,**/Core/ReadCache.cs,**/Configuration/ApplicationVersion.cs,**/Configuration/ConfigurationValidationException.cs,**/Configuration/ConfigurationValidator.cs,**/Configuration/ConsulConfigLoader.cs,**/Health/*.cs,**/Proxying/*.cs,**/Security/SecurityHeadersMiddleware.cs"
+          /d:sonar.coverage.exclusions="**/Program.cs,**/Authentication/AuthenticationEndpoints.cs,**/Authentication/LdapAuthenticator.cs,**/Authentication/LoginPage.cs,**/Authentication/UserSession.cs,**/ChangeLogging/ChangeRecordDispatchWorker.cs,**/ChangeLogging/ChangeRecordSink.cs,**/Configuration/ConsulConfigLoader.cs,**/Core/ChangeRecord.cs,**/Health/*.cs,**/Proxying/ConsulProxy.cs,**/Proxying/JsonValidationClientScript.cs,**/Security/SecurityHeadersMiddleware.cs"
           /d:sonar.exclusions="k8s/appsettings.consul.example.json"
           /d:sonar.issue.ignore.multicriteria="e1,e2"
           /d:sonar.issue.ignore.multicriteria.e1.ruleKey="csharpsquid:S4830"

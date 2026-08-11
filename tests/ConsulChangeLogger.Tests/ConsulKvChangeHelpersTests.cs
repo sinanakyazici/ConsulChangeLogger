@@ -59,6 +59,46 @@ public sealed class ConsulKvChangeHelpersTests
         Assert.Equal("{ \"a\" : 1 }", result);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-json")]
+    public void ExtractReadValue_ReturnsOriginalBody_WhenResponseIsEmptyOrNotJson(string responseBody)
+    {
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key", responseBody);
+
+        Assert.Equal(responseBody, result);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("""[{ "Value": null }]""")]
+    [InlineData("""[{ "Key": "app/key" }]""")]
+    [InlineData("""[{ "Value": "one" }, { "Value": "two" }]""")]
+    public void ExtractReadValue_ReturnsNull_ForUnsupportedConsulEnvelope(string responseBody)
+    {
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key", responseBody);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void ExtractReadValue_ReturnsEmptyString_ForEmptyBase64Value()
+    {
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key", """[{ "Value": "" }]""");
+
+        Assert.Equal(string.Empty, result);
+    }
+
+    [Fact]
+    public void ExtractReadValue_ReturnsOriginalBody_ForInvalidBase64Value()
+    {
+        var responseBody = """[{ "Value": "not-base64" }]""";
+
+        var result = ConsulKvChangeHelpers.ExtractReadValue("/v1/kv/app/key", responseBody);
+
+        Assert.Equal(responseBody, result);
+    }
+
     [Fact]
     public void BuildMutationPrefetchPath_AddsRawToSingleKeyDelete()
     {
@@ -73,6 +113,26 @@ public sealed class ConsulKvChangeHelpersTests
         var result = ConsulKvChangeHelpers.BuildMutationPrefetchPath("/v1/kv/app/key?recurse");
 
         Assert.Null(result);
+    }
+
+    [Theory]
+    [InlineData("/v1/status/leader")]
+    [InlineData("/v1/kv")]
+    [InlineData("/v1/kv/?dc=dc1")]
+    [InlineData("/v1/kv/app/key?keys")]
+    public void BuildMutationPrefetchPath_ReturnsNull_ForUnsupportedMutationTargets(string path)
+    {
+        var result = ConsulKvChangeHelpers.BuildMutationPrefetchPath(path);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void BuildMutationPrefetchPath_RemovesExistingRawAndPreservesOtherQueryParameters()
+    {
+        var result = ConsulKvChangeHelpers.BuildMutationPrefetchPath("/v1/kv/app/key?dc=dc1&raw&flags=0");
+
+        Assert.Equal("/v1/kv/app/key?dc=dc1&flags=0&raw", result);
     }
 
     [Fact]

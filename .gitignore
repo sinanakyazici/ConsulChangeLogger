@@ -17,6 +17,7 @@ logs/
 outbox/
 data-protection/
 .local-data/
+outputs/
 __pycache__/
 *.pyc
 

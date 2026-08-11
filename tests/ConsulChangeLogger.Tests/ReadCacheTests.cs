@@ -27,4 +27,17 @@ public sealed class ReadCacheTests
 
         Assert.Null(cache.Get("user|client|agent|key"));
     }
+
+    [Fact]
+    public void Store_RemovesExpiredSnapshotsBeforePersistingNewValue()
+    {
+        var cache = new ReadCache(TimeSpan.Zero);
+
+        cache.Store("old", "old-value", "2026-06-16T10:00:00Z", "req-old");
+        Thread.Sleep(5);
+        cache.Store("new", "new-value", "2026-06-16T10:01:00Z", "req-new");
+
+        Assert.Null(cache.Get("old"));
+        Assert.NotNull(cache.Get("new"));
+    }
 }
