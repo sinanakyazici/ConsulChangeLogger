@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.IO.Compression;
 using System.Net.Sockets;
 using System.Text;
 using ConsulChangeLogger.Proxy;
@@ -74,6 +75,7 @@ internal sealed class ConsulProxy
                 .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
 
             var responseBodyBytes = await upstreamResponse.Content.ReadAsByteArrayAsync(context.RequestAborted);
+            var auditResponseBodyBytes = DecodeResponseBodyForAudit(responseBodyBytes, upstreamResponse.Content.Headers.ContentEncoding);
             Log.Debug(
                 "Upstream response {StatusCode} for {Method} {Path} requestBytes={RequestBytes} responseBytes={ResponseBytes}",
                 (int)upstreamResponse.StatusCode,
@@ -82,7 +84,7 @@ internal sealed class ConsulProxy
                 requestBodyBytes.Length,
                 responseBodyBytes.Length);
             await WriteDownstreamResponseAsync(upstreamResponse, responseBodyBytes);
-            await CaptureChangeRecordAsync(requestBody, upstreamResponse, responseBodyBytes, mutationPrefetchState);
+            await CaptureChangeRecordAsync(requestBody, upstreamResponse, auditResponseBodyBytes, mutationPrefetchState);
         }
         catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
         {
@@ -157,6 +159,7 @@ internal sealed class ConsulProxy
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
 
         CopyRequestHeaders(request);
+        request.Headers.AcceptEncoding.ParseAdd("identity");
 
         if (requestBodyBytes.Length > 0)
         {
@@ -171,7 +174,7 @@ internal sealed class ConsulProxy
     {
         foreach (var header in context.Request.Headers)
         {
-            if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
+            if (ShouldSkipUpstreamRequestHeader(header.Key))
             {
                 continue;
             }
@@ -184,7 +187,7 @@ internal sealed class ConsulProxy
     {
         foreach (var header in context.Request.Headers)
         {
-            if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
+            if (ShouldSkipUpstreamRequestHeader(header.Key))
             {
                 continue;
             }
@@ -254,13 +257,14 @@ internal sealed class ConsulProxy
             using var prefetchRequest = new HttpRequestMessage(HttpMethod.Get, context.Request.PathBase + prefetchPath);
             foreach (var header in context.Request.Headers)
             {
-                if (HopByHopHeaders.Contains(header.Key) || header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
+                if (ShouldSkipUpstreamRequestHeader(header.Key))
                 {
                     continue;
                 }
 
                 prefetchRequest.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
             }
+            prefetchRequest.Headers.AcceptEncoding.ParseAdd("identity");
 
             using var prefetchResponse = await httpClientFactory
                 .CreateClient("consul")
@@ -284,7 +288,9 @@ internal sealed class ConsulProxy
                 return new MutationPrefetchState(false, false);
             }
 
-            var responseBody = await prefetchResponse.Content.ReadAsStringAsync(context.RequestAborted);
+            var responseBodyBytes = await prefetchResponse.Content.ReadAsByteArrayAsync(context.RequestAborted);
+            var auditResponseBodyBytes = DecodeResponseBodyForAudit(responseBodyBytes, prefetchResponse.Content.Headers.ContentEncoding);
+            var responseBody = Encoding.UTF8.GetString(auditResponseBodyBytes);
             var oldValue = ConsulKvChangeHelpers.ExtractReadValue(prefetchPath, responseBody);
             var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
             var requestId = Guid.NewGuid().ToString("N");
@@ -505,4 +511,47 @@ internal sealed class ConsulProxy
         exception.InnerException is SocketException socketException &&
         socketException.ErrorCode is 995 or 10053 or 10054;
 
+    internal static bool ShouldSkipUpstreamRequestHeader(string headerName) =>
+        HopByHopHeaders.Contains(headerName) ||
+        headerName.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+        headerName.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase);
+
+    internal static byte[] DecodeResponseBodyForAudit(byte[] responseBodyBytes, IEnumerable<string> contentEncodings)
+    {
+        var decodedBytes = responseBodyBytes;
+        foreach (var encoding in contentEncodings.SelectMany(SplitContentEncoding).Reverse())
+        {
+            decodedBytes = DecodeSingleEncoding(decodedBytes, encoding);
+        }
+
+        return decodedBytes;
+    }
+
+    private static IEnumerable<string> SplitContentEncoding(string value) =>
+        value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static byte[] DecodeSingleEncoding(byte[] responseBodyBytes, string contentEncoding)
+    {
+        if (contentEncoding.Equals("identity", StringComparison.OrdinalIgnoreCase))
+        {
+            return responseBodyBytes;
+        }
+
+        using var input = new MemoryStream(responseBodyBytes);
+        using var output = new MemoryStream();
+        Stream decoder = contentEncoding.ToLowerInvariant() switch
+        {
+            "gzip" => new GZipStream(input, CompressionMode.Decompress),
+            "br" => new BrotliStream(input, CompressionMode.Decompress),
+            "deflate" => new DeflateStream(input, CompressionMode.Decompress),
+            _ => input
+        };
+
+        using (decoder)
+        {
+            decoder.CopyTo(output);
+        }
+
+        return ReferenceEquals(decoder, input) ? responseBodyBytes : output.ToArray();
+    }
 }
